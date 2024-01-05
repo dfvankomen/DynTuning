@@ -8,3 +8,4 @@ add_subdirectory(kokkos-4.1.00)
 
 add_executable(DynamicTuningPrototype main.cpp)
 target_link_libraries(DynamicTuningPrototype PRIVATE Kokkos::kokkos)
+target_compile_features(DynamicTuningPrototype PRIVATE cxx_std_20)
