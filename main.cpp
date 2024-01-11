@@ -4,11 +4,13 @@
 // * Inputs and outputs are all ndarrays at the element level
 //
 
+//tmp
 #include <Kokkos_Core.hpp>
 #include <algorithm>
 #include <numeric>
 #include <tuple>
 #include <vector>
+#include <mdspan>
 
 class Algorithm
 {
@@ -116,39 +118,35 @@ class Kernel
 {
   public:
     // Note: we are choosing the host and device excution space at compile time
-    using HostExecutionSpace   = Kokkos::Serial;
-    using DeviceExecutionSpace = Kokkos::Serial;
+    typedef Kokkos::Serial HostExecutionSpace;
+    typedef Kokkos::Serial DeviceExecutionSpace;
 
-    Kernel(std::tuple<ParameterTypes&...> params, const LambdaType& lambda)
+    Kernel(std::tuple<ParameterTypes&...> params, const LambdaType& lambda, point_type lower, point_type upper)
       : parameters(params)
       , kernel_lambda(lambda)
       , parameter_views_host(Views<HostExecutionSpace>::create_views_from_tuple(params))
-      , parameter_views_device(Views<DeviceExecutionSpace>::create_views_from_tuple(parameters))
+      , parameter_views_device(Views<DeviceExecutionSpace>::create_views_from_tuple(params))
+      , m_lower(lower)
+      , m_upper(upper)
     {
     }
 
-    void call()
+    virtual void call()
     {
-
         // data movement needs to happen at the algorithm level
         //
         // Inside Kernel for the wrapper
         // TODO deep copies (somewhere)
-        auto kernel_wrapper = [=](const auto& i)
-        {
-            kernel_lambda(parameter_views_host, i);
-        };
 
+        // make kernel_wrapper variadic to handle multi-dimensional indexing
+       
         // Note: TODO think about how to make range policy generic to work for:
         // 1) Matrix-vector operation (different range)
         // 2) Matrix-matrix operation
         // 3) Vector-vector operation of same size
         // 4) vector-vector opertion with difference sizes (convolution)
-        auto range_policy = Kokkos::RangePolicy<HostExecutionSpace>(HostExecutionSpace(),
-                                                                    0,
-                                                                    std::get<0>(parameters).size());
-
-        Kokkos::parallel_for(range_policy, kernel_wrapper);
+        
+        // range_policy and kernel_wrapper need to match in dimensionality
     };
 
     // data_host_references
@@ -163,34 +161,255 @@ class Kernel
     LambdaType kernel_lambda;
 };
 
+template<typename LambdaType, typename... ParameterTypes>
+class Kernel1D : public Kernel<LambdaType, ParameterTypes...>
+{
+  public:
+    
+    typedef Kernel<LambdaType, ParameterTypes...>::HostExecutionSpace HostExecutionSpace;
+    typedef Kernel<LambdaType, ParameterTypes...>::DeviceExecutionSpace DeviceExecutionSpace;
+    
+    using array_index_type = std::int64_t;
+    using kernel_rank = Kokkos::Rank<1>;
+    using point_type = Kokkos::Array<array_index_type, kernel_rank>;
+    using tile_type  = Kokkos::Array<array_index_type, kernel_rank>;
+
+    Kernel2D(std::tuple<ParameterTypes&...> params, const LambdaType& lambda, point_type lower, point_type upper)
+      : Kernel<LambdaType, ParameterTypes...>(params, lambda)
+      , m_lower(lower)
+      , m_upper(upper)
+    {
+    };
+
+    void call()
+    {
+        auto kernel_wrapper = [=](const auto... indices)
+        {
+            kernel_lambda(parameter_views_host, indices...);
+        };
+       
+        auto range_policy = Kokkos::MDRangePolicy<HostExecutionSpace>(HostExecutionSpace,
+                                                                      kernel_rank,
+                                                                      m_lower,
+                                                                      m_upper);
+
+        Kokkos::parallel_for(range_policy, kernel_wrapper);
+    };
+    
+    point_type m_lower;
+    point_type m_upper;
+    tile_type m_tile;
+};
+
+template<typename LambdaType, typename... ParameterTypes>
+class Kernel2D : public Kernel<LambdaType, ParameterTypes...>
+{
+  public:
+    
+    typedef Kernel<LambdaType, ParameterTypes...>::HostExecutionSpace HostExecutionSpace;
+    typedef Kernel<LambdaType, ParameterTypes...>::DeviceExecutionSpace DeviceExecutionSpace;
+    
+    using array_index_type = std::int64_t;
+    using kernel_rank = Kokkos::Rank<2>;
+    using point_type = Kokkos::Array<array_index_type, kernel_rank>;
+    using tile_type  = Kokkos::Array<array_index_type, kernel_rank>;
+
+    Kernel2D(std::tuple<ParameterTypes&...> params, const LambdaType& lambda, point_type lower, point_type upper)
+      : Kernel<LambdaType, ParameterTypes...>(params, lambda)
+      , m_lower(lower)
+      , m_upper(upper)
+    {
+    };
+
+    void call()
+    {
+        auto kernel_wrapper = [=](const auto... indices)
+        {
+            kernel_lambda(parameter_views_host, indices...);
+        };
+       
+        auto range_policy = Kokkos::MDRangePolicy<HostExecutionSpace>(HostExecutionSpace,
+                                                                      kernel_rank,
+                                                                      m_lower,
+                                                                      m_upper);
+
+        Kokkos::parallel_for(range_policy, kernel_wrapper);
+    };
+    
+    point_type m_lower;
+    point_type m_upper;
+    tile_type m_tile;
+};
+
+template<typename LambdaType, typename... ParameterTypes>
+class Kernel3D : public Kernel<LambdaType, ParameterTypes...>
+{
+  public:
+    
+    typedef Kernel<LambdaType, ParameterTypes...>::HostExecutionSpace HostExecutionSpace;
+    typedef Kernel<LambdaType, ParameterTypes...>::DeviceExecutionSpace DeviceExecutionSpace;
+    
+    using array_index_type = std::int64_t;
+    using kernel_rank = Kokkos::Rank<3>;
+    using point_type = Kokkos::Array<array_index_type, kernel_rank>;
+    using tile_type  = Kokkos::Array<array_index_type, kernel_rank>;
+
+    Kernel2D(std::tuple<ParameterTypes&...> params, const LambdaType& lambda, point_type lower, point_type upper)
+      : Kernel<LambdaType, ParameterTypes...>(params, lambda)
+      , m_lower(lower)
+      , m_upper(upper)
+    {
+    };
+
+    void call()
+    {
+        auto kernel_wrapper = [=](const auto... indices)
+        {
+            kernel_lambda(parameter_views_host, indices...);
+        };
+       
+        auto range_policy = Kokkos::MDRangePolicy<HostExecutionSpace>(HostExecutionSpace,
+                                                                      kernel_rank,
+                                                                      m_lower,
+                                                                      m_upper);
+
+        Kokkos::parallel_for(range_policy, kernel_wrapper);
+    };
+    
+    point_type m_lower;
+    point_type m_upper;
+    tile_type m_tile;
+};
+
 int main()
 {
-    std::vector<double> x(1000);
-    std::iota(x.begin(), x.end(), 0.0);
+    // 1D vector-vector multiply
+    {
+      int N = 1000;
 
-    std::vector<double> y(1000);
+      std::vector<double> x(N);
+      std::iota(x.begin(), x.end(), 0.0);
 
-    Kokkos::View<std::vector<double>> a;
+      std::vector<double> y(N);
+    
+      Kernel1D k(pack(std::as_const(x), y),
+               []<typename ViewsTuple, typename Index>(ViewsTuple& views, const Index& i)
+               {
+                   auto& x = std::get<0>(views);
+                   auto& y = std::get<1>(views);
+                   y[i]    = x[i] * x[i];
+               },
+               {0},
+               {y.size()}
+               );
+
+      k.call();
+
+      for (auto i = 0; i < y.size(); i++)
+      {
+          assert(x[i] * x[i] == y[i]);
+      }
+    }
+
+    // 2D convolution
+    {
+      int N = 32;
+      
+      std::vector<double> x(N * N); // 32x32
+      std::iota(x.begin(), x.end(), 0.0);
+      std::mdspan x_span{x.data(), N, N};
+
+      N -= 2;
+      std::vector<double> y(N * N); //30x30
+      std::mdspan y_span{y.data(), N, N};
+    
+      Kernel2D k(pack(std::as_const(x_span), y_span),
+               []<typename ViewsTuple, typename Index>(ViewsTuple& views, const Index& i, const Index& j)
+               {
+                   auto& x = std::get<0>(views)(i:(i+3), j:(j+3)); // 3x3 subview
+                   auto& y = std::get<1>(views);
+                   y[i, j] = 0;
+                   for (int ii = 0; ii < 3; ii++)
+                     for (int jj = 0; jj < 3; jj++)
+                       y[i, j] += x[ii, jj];
+               }
+               {0,0},
+               {y.extent(0), y.extent(1)}
+               );
+
+      k.call();
+
+      for (auto i = 0; i < y.extent(0); i++) {
+        for (auto j = 0; j < y.extent(1); j++ {
+          tmp = 0.0;
+          for (auto ii = 0; ii < 3; ii++) {
+            for (auto jj = 0; jj < 3; jj++) {
+              auto iii = i + ii;
+              auto jjj = j + jj;
+              tmp += x[iii, jjj];
+            }
+          }
+          assert(tmp == y[i,j]);
+        }
+      }
+    }
+
+    // 3D convolution
+    {
+      int N = 10;
+      
+      std::vector<double> x(N * N * N); // 10x10x10
+      std::iota(x.begin(), x.end(), 0.0);
+      std::mdspan x_span{x.data(), N, N, N};
+
+      N -= 2;
+      std::vector<double> y(N * N * N); //8x8x8
+      std::mdspan y_span{y.data(), N, N, N};
+    
+      Kernel3D k(pack(std::as_const(x_span), y_span),
+               []<typename ViewsTuple, typename Index>(ViewsTuple& views, const Index& i, const Index& j, const Index& k)
+               {
+                   auto& x = std::get<0>(views)(i:(i+3), j:(j+3), k:k(k+3)); // 3x3x3 subview
+                   auto& y = std::get<1>(views);
+                   y[i, j, k] = 0;
+                   for (int ii = 0; ii < 3; ii++)
+                     for (int jj = 0; jj < 3; jj++)
+                       for (int kk = 0; kk < 3; kk++)
+                         y[i, j, k] += x[ii, jj, kk];
+               }
+               {0,0,0},
+               {y.extent(0), y.extent(1), y.extent(2)}
+               );
+
+      k.call();
+
+      for (auto i = 0; i < y.extent(0); i++) {
+        for (auto j = 0; j < y.extent(1); j++ {
+          for (auto k = 0; k < y.extent(2); k++ {
+            tmp = 0.0;
+            for (auto ii = 0; ii < 3; ii++) {
+              for (auto jj = 0; jj < 3; jj++) {
+                for (auto kk = 0; kk < 3; kk++) {
+                  auto iii = i + ii;
+                  auto jjj = j + jj;
+                  auto kkk = k + kk;
+                  tmp += x[iii, jjj, kkk];
+                }
+              }
+            }
+            assert(tmp == y[i,j,k]);
+          }
+        }
+      }
+    }
+
+    //Kokkos::View<std::vector<double>> a;
 
     // auto views = Views<Kokkos::Serial>::create_views(x, y);
 
     // Kernels never allocate data (global)
 
-    Kernel k(pack(std::as_const(x), y),
-             []<typename ViewsTuple, typename Index>(ViewsTuple& views, const Index& i)
-             {
-                 auto& x = std::get<0>(views);
-                 auto& y = std::get<1>(views);
-                 y[i]    = x[i] * x[i];
-             });
-
-    k.call();
-
-    for (auto i = 0; i < 1000; i++)
-    {
-        assert(x[i] * x[i] == y[i]);
-    }
-
+    /*
     std::vector<double> z(1000);
 
     Kernel k2(pack(std::as_const(y), z),
@@ -200,6 +419,7 @@ int main()
                   auto& y = std::get<1>(views);
                   y[i]    = x[i] * x[i];
               });
+    */
 
     // At the end, the algorithm needs to know the "final" output that needs copied to the host
     // Data needs moved if 1) it is a kernel input or 2) algorithm output
