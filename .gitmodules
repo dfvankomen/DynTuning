@@ -1,0 +1,6 @@
+[submodule "mdspan"]
+	path = mdspan
+	url = https://github.com/kokkos/mdspan.git
+[submodule "eigen"]
+	path = eigen
+	url = https://gitlab.com/libeigen/eigen.git
