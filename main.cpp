@@ -7,7 +7,6 @@
 // tmp
 #include "Eigen"
 #include "Kokkos_Core.hpp"
-#include "mdspan/mdspan.hpp"
 
 #include <algorithm>
 #include <numeric>
