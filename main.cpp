@@ -30,6 +30,11 @@ concept IsStdVector = is_specialization<std::decay_t<T>, std::vector>;
 template<typename T>
 concept IsEigenMatrix = std::is_base_of_v<Eigen::MatrixBase<std::decay_t<T>>, std::decay_t<T>>;
 
+template<typename EigenT, typename KokkosLayout>
+concept IsLayoutSame =
+  (std::is_same_v<KokkosLayout, Kokkos::LayoutRight> && std::decay_t<EigenT>::IsRowMajor == 1) ||
+  (std::is_same_v<KokkosLayout, Kokkos::LayoutLeft> && std::decay_t<EigenT>::IsRowMajor == 0);
+
 template<typename T>
 concept IsConst = std::is_const_v<std::remove_reference_t<T>>;
 
@@ -42,7 +47,7 @@ template<typename ExecutionSpace, typename T>
 struct EquivalentView;
 
 template<typename ExecutionSpace, typename T>
-    requires IsStdVector<T> || IsEigenMatrix<T>
+    requires IsStdVector<T>
 struct EquivalentView<ExecutionSpace, T>
 {
     // Type of the scalar in the data structure
@@ -52,6 +57,21 @@ struct EquivalentView<ExecutionSpace, T>
 
     // Type for the equivalent view of the data structure
     using type = Kokkos::View<value_type*,
+                              typename ExecutionSpace::array_layout,
+                              typename ExecutionSpace::memory_space>;
+};
+
+template<typename ExecutionSpace, typename T>
+    requires IsEigenMatrix<T>
+struct EquivalentView<ExecutionSpace, T>
+{
+    // Type of the scalar in the data structure
+    using value_type = std::conditional_t<std::is_const_v<T>,
+                                          const typename std::remove_reference_t<T>::value_type,
+                                          typename std::remove_reference_t<T>::value_type>;
+
+    // Type for the equivalent view of the data structure
+    using type = Kokkos::View<value_type**,
                               typename ExecutionSpace::array_layout,
                               typename ExecutionSpace::memory_space>;
 };
@@ -75,7 +95,7 @@ struct Views
 
     // Specialization for Eigen matrix
     template<typename T>
-        requires IsEigenMatrix<T>
+        requires IsEigenMatrix<T> && IsLayoutSame<T, typename ExecutionSpace::array_layout>
     static auto create_view(T& matrix)
     {
         using ViewType = typename EquivalentView<ExecutionSpace, T>::type;
@@ -166,7 +186,7 @@ RangeExtent<1> range_extent(const ArrayIndex& lower, const ArrayIndex& upper)
 }
 
 RangeExtent<2> range_extent(const Kokkos::Array<ArrayIndex, 2>& lower,
-                                  const Kokkos::Array<ArrayIndex, 2>& upper)
+                            const Kokkos::Array<ArrayIndex, 2>& upper)
 {
     return { lower, upper };
 }
@@ -177,6 +197,7 @@ class Kernel
   public:
     // Note: we are choosing the host and device excution space at compile time
     using HostExecutionSpace   = Kokkos::Serial;
+    // TODO: change to actual device execution space after prototyping
     using DeviceExecutionSpace = Kokkos::Serial;
     using BoundType            = RangeExtent<KernelRank>::value_type;
 
@@ -269,29 +290,33 @@ int main()
     {
         unsigned int N = 32;
 
-        Eigen::MatrixXd x(N, N); // 32x32
+        using MatrixType = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
+
+        MatrixType x(N, N); // 32x32
         x.setRandom();
 
         N -= 2;
-        Eigen::MatrixXd y(N, N); // 30x30
+        MatrixType y(N, N); // 30x30
+        y.setZero();
 
-        auto x_view = Views<Kokkos::Serial>::create_view(x);
-        static_assert(x_view.Rank == 2, "We need to figure out why the view is Rank 1...");
-
-        // Uncomment after the above issue is resolved
-        /*
         Kernel k(
           pack(std::as_const(x), y),
           []<typename ViewsTuple, typename Index>(ViewsTuple& views, const Index& i, const Index& j)
           {
-              auto& x_view = std::get<0>(views); // 3x3 subview
-              auto x =
-                Kokkos::subview(x_view, Kokkos::make_pair(i, j), Kokkos::make_pair(i + 3, j + 3));
-              auto& y = std::get<1>(views);
-              y[i, j] = 0;
-              for (int ii = 0; ii < 3; ii++)
-                  for (int jj = 0; jj < 3; jj++)
-                      y[i, j] += x[ii, jj];
+              auto& x_view = std::get<0>(views);
+              auto x_subview =
+                Kokkos::subview(x_view, Kokkos::make_pair(i, i + 3), Kokkos::make_pair(j, j + 3));
+              auto& y_view = std::get<1>(views);
+
+              auto tmp = 0.0;
+              for (Index ii = 0; ii < 3; ii++)
+              {
+                  for (Index jj = 0; jj < 3; jj++)
+                  {
+                      tmp += x_subview(ii, jj);
+                  }
+              }
+              y_view(i, j) = tmp;
           },
           range_extent({ 0, 0 }, { N, N }));
 
@@ -301,20 +326,10 @@ int main()
         {
             for (auto j = 0; j < N; j++)
             {
-                auto tmp = 0.0;
-                for (auto ii = 0; ii < 3; ii++)
-                {
-                    for (auto jj = 0; jj < 3; jj++)
-                    {
-                        auto iii = i + ii;
-                        auto jjj = j + jj;
-                        tmp += x(iii, jjj);
-                    }
-                }
-                assert(tmp == y(i, j));
+                auto diff = y(i, j) - x.block(i, j, 3, 3).sum();
+                assert(abs(diff) < 1e-14);
             }
         }
-        */
     }
     /*
     // 3D convolution
