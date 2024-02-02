@@ -1,0 +1,22 @@
+# Procedure:
+
+# 1) source the 'setup-env.sh" script
+
+source ./setup-env.sh
+
+# 2) build the kokkos container (will skip automatically if it already exists)
+
+(cd cntr && ./build-cntr.sh)
+
+# 3) start an instance of the container by running the server script, running again will shut it down
+
+./server.sh
+
+# 4) build the project with the build.sh script
+
+./build.sh
+
+# 5) run the new executable with run.sh
+
+./run.sh
+

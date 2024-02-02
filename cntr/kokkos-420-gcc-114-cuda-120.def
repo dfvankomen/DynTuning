@@ -1,0 +1,34 @@
+Bootstrap: docker
+From: nvidia/cuda:12.0.0-devel-ubuntu22.04
+
+%environment
+  export CUDA_HOME=/usr/local/cuda
+  export KOKKOS_HOME=/usr/local/kokkos
+  export PATH="${KOKKOS_HOME}/bin:${PATH}"
+
+%post
+
+  # set timezone to avoid interactive input from tzdata
+  export TZ="America/New_York"
+  ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+  # install dependencies
+  apt-get update && apt-get upgrade -y
+  apt-get install -y git cmake make
+  
+  cd /usr/local/src
+  git clone --depth 1 --branch 4.2.00 https://github.com/kokkos/kokkos.git
+  cd kokkos
+  mkdir build
+  cd build
+  cmake ../ \
+    -DCMAKE_CXX_COMPILER=g++ \
+    -DCMAKE_INSTALL_PREFIX=/usr/local/kokkos \
+    -DKokkos_ENABLE_SERIAL=ON \
+    -DKokkos_ARCH_ZEN2=ON \
+    -DKokkos_ENABLE_CUDA=ON \
+    -DKokkos_ENABLE_CUDA_LAMBDA=ON \
+    -DKokkos_ARCH_VOLTA70=ON \
+    -DKokkos_CUDA_DIR=/usr/local/cuda
+  make -j 32 install
+  rm -rf /usr/local/src/kokkos
