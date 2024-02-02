@@ -109,6 +109,11 @@ concept IsStdVector = is_specialization<std::decay_t<T>, std::vector>;
 //template<typename T>
 //concept IsEigenMatrix = std::is_base_of_v<Eigen::MatrixBase<std::decay_t<T> >, std::decay_t<T> >;
 
+template<typename EigenT, typename KokkosLayout>
+concept IsLayoutSame =
+  (std::is_same_v<KokkosLayout, Kokkos::LayoutRight> && std::decay_t<EigenT>::IsRowMajor == 1) ||
+  (std::is_same_v<KokkosLayout, Kokkos::LayoutLeft> && std::decay_t<EigenT>::IsRowMajor == 0);
+
 template<typename T>
 concept IsConst = std::is_const_v<std::remove_reference_t<T> >;
 
@@ -123,6 +128,7 @@ struct EquivalentView;
 template<typename ExecutionSpace, typename T>
     requires IsStdVector<T>
     //requires IsStdVector<T> || IsEigenMatrix<T>
+
 struct EquivalentView<ExecutionSpace, T>
 {
     // Type of the scalar in the data structure
@@ -132,6 +138,21 @@ struct EquivalentView<ExecutionSpace, T>
 
     // Type for the equivalent view of the data structure
     using type = Kokkos::View<value_type*,
+                              typename ExecutionSpace::array_layout,
+                              typename ExecutionSpace::memory_space>;
+};
+
+template<typename ExecutionSpace, typename T>
+    requires IsEigenMatrix<T>
+struct EquivalentView<ExecutionSpace, T>
+{
+    // Type of the scalar in the data structure
+    using value_type = std::conditional_t<std::is_const_v<T>,
+                                          const typename std::remove_reference_t<T>::value_type,
+                                          typename std::remove_reference_t<T>::value_type>;
+
+    // Type for the equivalent view of the data structure
+    using type = Kokkos::View<value_type**,
                               typename ExecutionSpace::array_layout,
                               typename ExecutionSpace::memory_space>;
 };
@@ -245,7 +266,7 @@ RangeExtent<1> range_extent(const ArrayIndex& lower, const ArrayIndex& upper)
 }
 
 RangeExtent<2> range_extent(const Kokkos::Array<ArrayIndex, 2>& lower,
-                                  const Kokkos::Array<ArrayIndex, 2>& upper)
+                            const Kokkos::Array<ArrayIndex, 2>& upper)
 {
     return { lower, upper };
 }
@@ -424,42 +445,45 @@ int main(int argc, char* argv[])
     {
         // set up data
         unsigned int N = 32;
-        Eigen::MatrixXd x(N, N); // 32x32
+        using MatrixType = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
+
+        MatrixType x(N, N); // 32x32
         x.setRandom();
         N -= 2;
-        Eigen::MatrixXd y(N, N); // 30x30
+        MatrixType y(N, N); // 30x30
+        y.setZero();
 
-        // define the kernel
         Kernel k(
-            "2D convolution",
-            pack(std::as_const(x), y),
-            []<typename ViewsTuple, typename Index>(ViewsTuple& views, const Index& i, const Index& j)
-            {
-                auto& x_view = std::get<0>(views); // 3x3 subview
-                auto  x = Kokkos::subview(x_view, Kokkos::make_pair(i, j), Kokkos::make_pair(i + 3, j + 3));
-                auto& y = std::get<1>(views);
-                y[i, j] = 0;
-                for (int ii = 0; ii < 3; ii++)
-                    for (int jj = 0; jj < 3; jj++)
-                        y[i, j] += x[ii, jj];
-            },
-            range_extent({ 0, 0 }, { N, N })
-        );
+          "2D convolution",
+          pack(std::as_const(x), y),
+          []<typename ViewsTuple, typename Index>(ViewsTuple& views, const Index& i, const Index& j)
+          {
+              auto& x_view = std::get<0>(views);
+              auto x_subview =
+                Kokkos::subview(x_view, Kokkos::make_pair(i, i + 3), Kokkos::make_pair(j, j + 3));
+              auto& y_view = std::get<1>(views);
 
-        // run the kernel
-        TIMING(k.call());
-        
-        // verify the output
-        for (int i = 0; i < N; i++) {
-          for (int j = 0; j < N; j++) {
-            auto tmp = 0.0;
-            for (int ii = -1; ii < 2; ii++) {
-              for (int jj = -1; jj < 2; jj++) {
-                tmp += x(i+ii, j+jj);
+              auto tmp = 0.0;
+              for (Index ii = 0; ii < 3; ii++)
+              {
+                  for (Index jj = 0; jj < 3; jj++)
+                  {
+                      tmp += x_subview(ii, jj);
+                  }
               }
+              y_view(i, j) = tmp;
+          },
+          range_extent({ 0, 0 }, { N, N }));
+
+        k.call();
+
+        for (auto i = 0; i < N; i++)
+        {
+            for (auto j = 0; j < N; j++)
+            {
+                auto diff = y(i, j) - x.block(i, j, 3, 3).sum();
+                assert(abs(diff) < 1e-14);
             }
-            assert(tmp == y(i, j));
-          }
         }
     }
     */
