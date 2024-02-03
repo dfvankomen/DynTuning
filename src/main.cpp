@@ -127,8 +127,6 @@ struct EquivalentView;
 
 template<typename ExecutionSpace, typename T>
     requires IsStdVector<T>
-    //requires IsStdVector<T> || IsEigenMatrix<T>
-
 struct EquivalentView<ExecutionSpace, T>
 {
     // Type of the scalar in the data structure
@@ -142,20 +140,20 @@ struct EquivalentView<ExecutionSpace, T>
                               typename ExecutionSpace::memory_space>;
 };
 
-template<typename ExecutionSpace, typename T>
-    requires IsEigenMatrix<T>
-struct EquivalentView<ExecutionSpace, T>
-{
-    // Type of the scalar in the data structure
-    using value_type = std::conditional_t<std::is_const_v<T>,
-                                          const typename std::remove_reference_t<T>::value_type,
-                                          typename std::remove_reference_t<T>::value_type>;
-
-    // Type for the equivalent view of the data structure
-    using type = Kokkos::View<value_type**,
-                              typename ExecutionSpace::array_layout,
-                              typename ExecutionSpace::memory_space>;
-};
+//template<typename ExecutionSpace, typename T>
+//    requires IsEigenMatrix<T>
+//struct EquivalentView<ExecutionSpace, T>
+//{
+//    // Type of the scalar in the data structure
+//    using value_type = std::conditional_t<std::is_const_v<T>,
+//                                          const typename std::remove_reference_t<T>::value_type,
+//                                          typename std::remove_reference_t<T>::value_type>;
+//
+//    // Type for the equivalent view of the data structure
+//    using type = Kokkos::View<value_type**,
+//                              typename ExecutionSpace::array_layout,
+//                              typename ExecutionSpace::memory_space>;
+//};
 
 template<typename ExecutionSpace>
 struct Views
