@@ -24,77 +24,15 @@
 #define KOKKOS_DEVICE Serial
 #endif
 
-class Algorithm
-{
-  // start with an array of kernels
-  // deduce data dependecies among kernels
-  // organize kernels into independent chains
-  // store array of arrays of kernel pointers
-  //   each subchain can be executed in any order
-  //   kernels within each subchain must be executed in order
-  // iterate over the kernels in subchains and determine for every output,
-  //   find the next kernel that depends on that output,
-  //   determine which device that kernel will run on,
-  //   then immediately start "copying" the output to that device
-  //   (if the souce and destination devices are the same it will be a no-op)
+#define TIMING(f) \
+{ \
+    Kokkos::Timer timer; \
+    timer.reset(); \
+    f; \
+    double kernel_time = timer.seconds(); \
+    printf("%s: %.6f\n", k.name(), kernel_time); \
+}
 
-  // enum {INPUT, OUTPUT};
-  // for each kernel
-  //   for each arg in the parameters tuple
-  //     if arg is const      // input
-  //       flag = 0
-  //     if arg is not const  // output
-  //       flag = 1
-  //    std::is_const<decltype(i)>::value
-  //
-  // for each output, does it appear as input for any kernels? if yes, count/track that
-  // make sure all inputs are accounted for,
-  //   they should be already present at the start of the algorithm,
-  //   or
-  //   they should be an output of a kernel in the algorithm
-  // detect circular dependency and throw an error
-
-  // kernel subchain order can be an additional permutative variable
-
-  // read in a configuration file with bounds on the possible variables to optimize
-  // generate all possible combinations of those variables
-  // for each possible combination, call the algorithm and store timings
-
-  // example
-  /*
-
-  Kernel k1(pack(std::as_const(a), b), lambda1);
-  Kernel k2(pack(std::as_const(c), d), lambda2);
-  Kernel k3(pack(std::as_const(b), e), lambda3);
-
-  inputs: a, c, b
-  outputs: b, d, e
-  outinputs: b
-
-  chains:
-    chain1: k1, k3
-    chain2: k2
-
-  permuations of chains: (0,1) and (1,0)
-
-  for each run:
-    // for each output construct a list (in order) of devices for dependent kernels
-    // how to mark whether an output should be copied back the host?
-    data_dependencies:
-      b: (device1)
-
-  for each kernel after it runs, lookup the next device in the data_dependencies
-    start a data copy to that device
-    (if the source and destination are the same device, it will be a no-op)
-
-  */
-
-  // what if a kernel depends on more than one kernel, but suppose those kernels are independent of each other
-  // they should be allowed to execute in any order
-  // might be important if one takes longer to transfer data than the other
-  // might be optimal to run one first then run the next while the data has started copying
-
-};
 
 // Concepts that will be used for EquivalentView
 
@@ -350,53 +288,139 @@ class Kernel
 };
 
 
-#define TIMING(f) \
-{ \
-    Kokkos::Timer timer; \
-    timer.reset(); \
-    f; \
-    double kernel_time = timer.seconds(); \
-    printf("%s: %.6f\n", k.name(), kernel_time); \
-}
+template<int KernelRank, typename LambdaType, typename... ParameterTypes>
+class Algorithm
+{
+  public:
+    using KernelType = Kernel<KernelRank, LambdaType, ParameterTypes...>;
+
+    // the core of this class is a vector of kernels
+    // NOTE how to handle kernels of arbitrary types?
+    // Perhaps Kernel class should inherit from a base class, and then store base class pointers?
+    std::vector<KernelType> kernels;
+
+    // constructor should initialize and empty vector
+    Algorithm () 
+      : kernels(std::vector<KernelType>())
+    {};
+
+    // creates a new kernel and appends it to the kernels vector
+    void kernel(const char* name,
+                std::tuple<ParameterTypes&...> params,
+                const LambdaType& lambda,
+                const RangeExtent<KernelRank>& range_extent)
+    {
+        kernels.push_back(Kernel(name, params, lambda, range_extent));
+    };
+    
+    // call all kernels
+    void call()
+    {
+        for (auto k : kernels) {
+            TIMING(k.call());
+        }
+    };
+
+  // start with an array of kernels
+  // deduce data dependecies among kernels
+  // organize kernels into independent chains
+  // store array of arrays of kernel pointers
+  //   each subchain can be executed in any order
+  //   kernels within each subchain must be executed in order
+  // iterate over the kernels in subchains and determine for every output,
+  //   find the next kernel that depends on that output,
+  //   determine which device that kernel will run on,
+  //   then immediately start "copying" the output to that device
+  //   (if the souce and destination devices are the same it will be a no-op)
+
+  // enum {INPUT, OUTPUT};
+  // for each kernel
+  //   for each arg in the parameters tuple
+  //     if arg is const      // input
+  //       flag = 0
+  //     if arg is not const  // output
+  //       flag = 1
+  //    std::is_const<decltype(i)>::value
+  //
+  // for each output, does it appear as input for any kernels? if yes, count/track that
+  // make sure all inputs are accounted for,
+  //   they should be already present at the start of the algorithm,
+  //   or
+  //   they should be an output of a kernel in the algorithm
+  // detect circular dependency and throw an error
+
+  // kernel subchain order can be an additional permutative variable
+
+  // read in a configuration file with bounds on the possible variables to optimize
+  // generate all possible combinations of those variables
+  // for each possible combination, call the algorithm and store timings
+
+  // example
+  /*
+
+  Kernel k1(pack(std::as_const(a), b), lambda1);
+  Kernel k2(pack(std::as_const(c), d), lambda2);
+  Kernel k3(pack(std::as_const(b), e), lambda3);
+
+  inputs: a, c, b
+  outputs: b, d, e
+  outinputs: b
+
+  chains:
+    chain1: k1, k3
+    chain2: k2
+
+  permuations of chains: (0,1) and (1,0)
+
+  for each run:
+    // for each output construct a list (in order) of devices for dependent kernels
+    // how to mark whether an output should be copied back the host?
+    data_dependencies:
+      b: (device1)
+
+  for each kernel after it runs, lookup the next device in the data_dependencies
+    start a data copy to that device
+    (if the source and destination are the same device, it will be a no-op)
+
+  */
+
+  // what if a kernel depends on more than one kernel, but suppose those kernels are independent of each other
+  // they should be allowed to execute in any order
+  // might be important if one takes longer to transfer data than the other
+  // might be optimal to run one first then run the next while the data has started copying
+
+};
+
 
 int main(int argc, char* argv[])
 {
+    int N;
 
     // Initialize Kokkos
     Kokkos::initialize(argc, argv);
 
+    // Create an Algorithm object
+    Algorithm algo;
+
     // 1D vector-vector multiply
-    {
-        // set up data
-        int N = 10000000;
-        std::vector<double> x(N);
-        std::iota(x.begin(), x.end(), 0.0);
-        std::vector<double> y(N);
-        std::iota(y.begin(), y.end(), 0.0);
-        std::vector<double> z(N);
-
-        // define the kernel
-        Kernel k(
-            "1D vector-vector multiply",
-            pack(std::as_const(x), std::as_const(y), z),
-            []<typename ViewsTuple, typename Index>(ViewsTuple& views, const Index& i)
-            {
-                auto& x = std::get<0>(views);
-                auto& y = std::get<1>(views);
-                auto& z = std::get<2>(views);
-                z[i] = x[i] * y[i];
-            },
-            range_extent(0, z.size())
-        );
-
-        // run the kernel
-        TIMING(k.call());
-        
-        // verify the output
-        for (auto i = 0; i < y.size(); i++) {
-            assert(x[i] * y[i] == z[i]);
-        }
-    }
+    N = 10000000;
+    std::vector<double> x(N);
+    std::iota(x.begin(), x.end(), 0.0);
+    std::vector<double> y(N);
+    std::iota(y.begin(), y.end(), 0.0);
+    std::vector<double> z(N);
+    algo.kernel(
+        "1D vector-vector multiply",
+        pack(std::as_const(x), std::as_const(y), z),
+        []<typename ViewsTuple, typename Index>(ViewsTuple& views, const Index& i)
+        {
+            auto& x = std::get<0>(views);
+            auto& y = std::get<1>(views);
+            auto& z = std::get<2>(views);
+            z[i] = x[i] * y[i];
+        },
+        range_extent(0, z.size())
+    );
 
     /*
     // matrix-vector multiply
@@ -494,9 +518,18 @@ int main(int argc, char* argv[])
     //   k.parameters[1] is not const and hence output
     //   k2.parameters[0] is const and hence input
     // assert(&std::get<1>(k.parameters) == &std::get<0>(k2.parameters));
+    
 
-  //Finalize Kokkos
-  Kokkos::finalize();
+    // execute all kernels
+    algo.call();
+    
+    // 1D vector-vector multiply: verify the output
+    for (auto i = 0; i < y.size(); i++) {
+        assert(x[i] * y[i] == z[i]);
+    }
+    
+    //Finalize Kokkos
+    Kokkos::finalize();
 
-  printf("\n** GRACEFUL EXIT **\n");
+    printf("\n** GRACEFUL EXIT **\n");
 }
