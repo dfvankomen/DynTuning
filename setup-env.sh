@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # set the container path and instance name
-cntr_name=cntr/kokkos-420-gcc-114-cuda-120.sif
-cntr_inst=kokkos
-exe_name="DynamicTuningPrototype"
+export cntr_name=cntr/kokkos-420-gcc-114-cuda-120.sif
+export cntr_inst=kokkos
+export exe_name="DynamicTuningPrototype"
 
 # load singularity or container support
 module load singularity/3.8.4
@@ -13,7 +13,7 @@ export TMPDIR=/p/work1/tmp/$(whoami)
 export SINGULARITY_BIND="${TMPDIR},${SINGULARITY_BIND}"
 
 # always bind this directory
-export SINGULARITY_BIND="$(dirname $0),${SINGULARITY_BIND}"
+export SINGULARITY_BIND="$(pwd),${SINGULARITY_BIND}"
 
 # enable nvidia support
 export SINGULARITY_NV=1
