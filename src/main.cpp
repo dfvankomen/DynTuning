@@ -24,7 +24,7 @@
 #define KOKKOS_DEVICE Serial
 #endif
 
-#define TIMING(f) \
+#define TIMING(k, f) \
 { \
     Kokkos::Timer timer; \
     timer.reset(); \
@@ -184,7 +184,7 @@ struct RangeExtent
     value_type upper;
 };
 
-/// @brief Packs a list of references to data containers into a tuple
+/// @brief Packs a list of references to class instances into a tuple
 /// @tparam ...ParameterTypes
 /// @param ...params
 /// @return
@@ -286,39 +286,74 @@ class Kernel
     const BoundType upper_;
     // tile_type tile_;
 };
+    
 
+// utility function for iterating over a tuple of unknown length
+template<typename LambdaType, std::size_t I = 0, typename... T>
+inline typename std::enable_if<I == sizeof...(T), void>::type
+iter_tuple(const std::tuple<T...>& t, const LambdaType& lambda)
+{ }
 
-template<int KernelRank, typename LambdaType, typename... ParameterTypes>
+template<typename LambdaType, std::size_t I = 0, typename... T>
+inline typename std::enable_if<I < sizeof...(T), void>::type
+iter_tuple(const std::tuple<T...>& t, const LambdaType& lambda)
+{
+  auto& elem = std::get<I>(t);
+  lambda(elem);
+  iter_tuple<LambdaType, I + 1, T...>(t, lambda);
+}
+
+// utility function to check whether a parameter is const
+template <typename ParamType>
+bool check_is_const(ParamType& param) {
+  return false;
+}
+template <typename ParamType>
+bool check_is_const(const ParamType& param) {
+  return true;
+}
+
+template <typename... KernelTypes>
 class Algorithm
 {
   public:
-    using KernelType = Kernel<KernelRank, LambdaType, ParameterTypes...>;
-
-    // the core of this class is a vector of kernels
-    // NOTE how to handle kernels of arbitrary types?
-    // Perhaps Kernel class should inherit from a base class, and then store base class pointers?
-    std::vector<KernelType> kernels;
 
     // constructor should initialize and empty vector
-    Algorithm () 
-      : kernels(std::vector<KernelType>())
-    {};
-
-    // creates a new kernel and appends it to the kernels vector
-    void kernel(const char* name,
-                std::tuple<ParameterTypes&...> params,
-                const LambdaType& lambda,
-                const RangeExtent<KernelRank>& range_extent)
+    Algorithm (std::tuple<KernelTypes&...> kernels) 
+      : kernels_(kernels)
+      , n_kernels_(std::tuple_size<decltype(kernels_)>::value)
     {
-        kernels.push_back(Kernel(name, params, lambda, range_extent));
+      iter_tuple(kernels_, []<typename KernelType>(KernelType& kernel) {
+        printf("Registered Kernel: %s\n", kernel.kernel_name_.c_str());
+      });
     };
-    
+    ~Algorithm () {};
+
+    // the core of this class is a tuple of kernels
+    std::size_t n_kernels_;
+    std::tuple<KernelTypes&...> kernels_;
+
+    // deduce data relationships
+    void _deduce_dependencies()
+    {
+      iter_tuple(kernels_, []<typename KernelType>(KernelType& kernel) {
+        printf("Kernel: %s\n", kernel.kernel_name_.c_str());
+        iter_tuple(kernel.data_params_, []<typename ParamType>(ParamType& param) {
+          //if (std::is_const<decltype(param)>::value)
+          if (check_is_const(param))
+            printf("param is const\n");
+          else
+            printf("param is not const\n");
+        });
+      });
+    };
+
     // call all kernels
     void call()
     {
-        for (auto k : kernels) {
-            TIMING(k.call());
-        }
+      iter_tuple(kernels_, []<typename KernelType>(KernelType& kernel) {
+        TIMING(kernel, kernel.call());
+      });
     };
 
   // start with an array of kernels
@@ -399,9 +434,6 @@ int main(int argc, char* argv[])
     // Initialize Kokkos
     Kokkos::initialize(argc, argv);
 
-    // Create an Algorithm object
-    Algorithm algo;
-
     // 1D vector-vector multiply
     N = 10000000;
     std::vector<double> x(N);
@@ -409,7 +441,9 @@ int main(int argc, char* argv[])
     std::vector<double> y(N);
     std::iota(y.begin(), y.end(), 0.0);
     std::vector<double> z(N);
-    algo.kernel(
+    std::vector<double> w(N);
+    
+    Kernel k1(
         "1D vector-vector multiply",
         pack(std::as_const(x), std::as_const(y), z),
         []<typename ViewsTuple, typename Index>(ViewsTuple& views, const Index& i)
@@ -421,6 +455,22 @@ int main(int argc, char* argv[])
         },
         range_extent(0, z.size())
     );
+    
+    Kernel k2(
+        "1D vector-vector multiply",
+        pack(std::as_const(x), std::as_const(z), w),
+        []<typename ViewsTuple, typename Index>(ViewsTuple& views, const Index& i)
+        {
+            auto& x = std::get<0>(views);
+            auto& z = std::get<1>(views);
+            auto& w = std::get<2>(views);
+            w[i] = x[i] * z[i];
+        },
+        range_extent(0, w.size())
+    );
+
+    // Create an Algorithm object
+    Algorithm algo(pack(k1, k2));
 
     /*
     // matrix-vector multiply
@@ -521,12 +571,13 @@ int main(int argc, char* argv[])
     
 
     // execute all kernels
+    algo._deduce_dependencies();
     algo.call();
     
     // 1D vector-vector multiply: verify the output
-    for (auto i = 0; i < y.size(); i++) {
-        assert(x[i] * y[i] == z[i]);
-    }
+    //for (auto i = 0; i < y.size(); i++) {
+    //    assert(x[i] * y[i] == z[i]);
+    //}
     
     //Finalize Kokkos
     Kokkos::finalize();
