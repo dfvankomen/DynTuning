@@ -305,23 +305,87 @@ iter_tuple(const std::tuple<T...>& t, const LambdaType& lambda)
 
 // utility function to check whether a parameter is const
 template <typename ParamType>
-bool check_is_const(ParamType& param) {
+bool is_const(ParamType& param) {
   return false;
 }
 template <typename ParamType>
-bool check_is_const(const ParamType& param) {
+bool is_const(const ParamType& param) {
   return true;
 }
 
+//// Helper function to create a tuple of references
+//template <typename... Args>
+//auto create_tuple_of_references(Args&&... args) {
+//      return std::forward_as_tuple(std::forward<Args>(args)...);
+//}
+////auto tuple_of_references = create_tuple_of_references(k1, k2, k3);
+
+// 1) start with some kernels
+//  Kernel k1(...);
+//  Kernel k2(...);
+//  kernel k3(...);
+
+// 2) create a tuple of KernelInfo, one for each kernel
+
+// utility to create a tuple of N objects of same type T at compile time
+template <size_t I, typename T>
+struct tuple_n {
+  template <typename... Args>
+  using type = typename tuple_n<I - 1, T>::template type<T, Args...>;
+};
+template <typename T>
+struct tuple_n<0, T> {
+  template <typename... Args>
+  using type = std::tuple<Args...>;
+};
+template <size_t I, typename T>
+using tuple_of = typename tuple_n<I, T>::template type<>;
+
+// helper function to create a tuple of T* based on the number data params a kernel has
+template <typename T, typename KernelType>
+constexpr std::tuple<T*> create_kernel_info_ptr_tuple(KernelType& k) {
+  return tuple_of<std::tuple_size<decltype(k.data_params_)>::value, T*>{};
+}
+
+// struct to act as nodes in the computation graph
+template <typename KernelType>
+struct KernelInfo {
+  constexpr KernelInfo(KernelType& k)
+    : kernel(k)
+    , next(create_kernel_info_ptr_tuple<KernelInfo>(k))
+  {};
+  KernelType& kernel;
+  std::tuple<KernelInfo*> next;
+};
+
+// Helper function to initialize an instance of KernelInfo
+template <typename KernelType>
+constexpr KernelInfo<KernelType> create_kernel_info(KernelType& k) {
+  return {k};
+}
+
+// Helper function to initialize a tuple of KernelInfo from a pack of Kernels
+template <typename KernelType, size_t... Is>
+constexpr auto create_kernel_info_tuple_impl(KernelType& k, std::index_sequence<Is...>) {
+  //return std::make_tuple(create_kernel_info<KernelType>(std::get<Is>(k))...);
+  return std::make_tuple(create_kernel_info<std::tuple_element_t<Is, KernelType>>(std::get<Is>(k))...);
+}
+template <typename KernelType>
+constexpr auto create_kernel_info_tuple(KernelType& k) {
+  return create_kernel_info_tuple_impl(k, std::make_index_sequence<std::tuple_size_v<KernelType>>{});
+}
+
+
+// main algorithm function 
 template <typename... KernelTypes>
 class Algorithm
 {
   public:
 
     // constructor should initialize and empty vector
-    Algorithm (std::tuple<KernelTypes&...> kernels) 
+    constexpr Algorithm (std::tuple<KernelTypes&...> kernels) 
       : kernels_(kernels)
-      , n_kernels_(std::tuple_size<decltype(kernels_)>::value)
+      , kernel_graph_(create_kernel_info_tuple(kernels))
     {
       iter_tuple(kernels_, []<typename KernelType>(KernelType& kernel) {
         printf("Registered Kernel: %s\n", kernel.kernel_name_.c_str());
@@ -330,16 +394,22 @@ class Algorithm
     ~Algorithm () {};
 
     // the core of this class is a tuple of kernels
-    std::size_t n_kernels_;
     std::tuple<KernelTypes&...> kernels_;
+    std::tuple<KernelInfo<KernelTypes&...>> kernel_graph_;
 
+    /*
     // deduce data relationships
     void _deduce_dependencies()
     {
       iter_tuple(kernels_, []<typename KernelType>(KernelType& kernel) {
         printf("Kernel: %s\n", kernel.kernel_name_.c_str());
         iter_tuple(kernel.data_params_, []<typename ParamType>(ParamType& param) {
-          //if (std::is_const<decltype(param)>::value)
+          // NOTE can access name of a view with view.label()
+          //   if param has no dependents set next_device == HOST
+          //   if param has at least 1 dependent
+          //     set next_device to the device of the next kernel that depends on it
+          //     each kernel should have a next_device for each param
+          //     execute a copy for each param to their own next_device
           if (check_is_const(param))
             printf("param is const\n");
           else
@@ -347,6 +417,7 @@ class Algorithm
         });
       });
     };
+    */
 
     // call all kernels
     void call()
@@ -355,74 +426,6 @@ class Algorithm
         TIMING(kernel, kernel.call());
       });
     };
-
-  // start with an array of kernels
-  // deduce data dependecies among kernels
-  // organize kernels into independent chains
-  // store array of arrays of kernel pointers
-  //   each subchain can be executed in any order
-  //   kernels within each subchain must be executed in order
-  // iterate over the kernels in subchains and determine for every output,
-  //   find the next kernel that depends on that output,
-  //   determine which device that kernel will run on,
-  //   then immediately start "copying" the output to that device
-  //   (if the souce and destination devices are the same it will be a no-op)
-
-  // enum {INPUT, OUTPUT};
-  // for each kernel
-  //   for each arg in the parameters tuple
-  //     if arg is const      // input
-  //       flag = 0
-  //     if arg is not const  // output
-  //       flag = 1
-  //    std::is_const<decltype(i)>::value
-  //
-  // for each output, does it appear as input for any kernels? if yes, count/track that
-  // make sure all inputs are accounted for,
-  //   they should be already present at the start of the algorithm,
-  //   or
-  //   they should be an output of a kernel in the algorithm
-  // detect circular dependency and throw an error
-
-  // kernel subchain order can be an additional permutative variable
-
-  // read in a configuration file with bounds on the possible variables to optimize
-  // generate all possible combinations of those variables
-  // for each possible combination, call the algorithm and store timings
-
-  // example
-  /*
-
-  Kernel k1(pack(std::as_const(a), b), lambda1);
-  Kernel k2(pack(std::as_const(c), d), lambda2);
-  Kernel k3(pack(std::as_const(b), e), lambda3);
-
-  inputs: a, c, b
-  outputs: b, d, e
-  outinputs: b
-
-  chains:
-    chain1: k1, k3
-    chain2: k2
-
-  permuations of chains: (0,1) and (1,0)
-
-  for each run:
-    // for each output construct a list (in order) of devices for dependent kernels
-    // how to mark whether an output should be copied back the host?
-    data_dependencies:
-      b: (device1)
-
-  for each kernel after it runs, lookup the next device in the data_dependencies
-    start a data copy to that device
-    (if the source and destination are the same device, it will be a no-op)
-
-  */
-
-  // what if a kernel depends on more than one kernel, but suppose those kernels are independent of each other
-  // they should be allowed to execute in any order
-  // might be important if one takes longer to transfer data than the other
-  // might be optimal to run one first then run the next while the data has started copying
 
 };
 
@@ -469,6 +472,10 @@ int main(int argc, char* argv[])
         range_extent(0, w.size())
     );
 
+    ////auto kernels = create_tuple_of_references(k1, k2);
+    //auto kernels = pack(k1, k2);
+    //auto kernel_graph = create_kernel_info_tuple(kernels);
+    
     // Create an Algorithm object
     Algorithm algo(pack(k1, k2));
 
@@ -571,8 +578,8 @@ int main(int argc, char* argv[])
     
 
     // execute all kernels
-    algo._deduce_dependencies();
-    algo.call();
+    ////algo._deduce_dependencies();
+    //algo.call();
     
     // 1D vector-vector multiply: verify the output
     //for (auto i = 0; i < y.size(); i++) {
