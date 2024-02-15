@@ -5,7 +5,7 @@ project(DynamicTuningPrototype VERSION 1.0 LANGUAGES CXX)
 option(Kokkos_DEVICE "Execution space for device code" OFF)
 
 # Requires KOKKOS
-find_package(Kokkos REQUIRED)
+find_package(Kokkos REQUIRED HINTS "./kokkos-4.1.00/build")
 
 # set available execution spaces
 list(FIND Kokkos_DEVICES "SERIAL" _idx_SERIAL)
