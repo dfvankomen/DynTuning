@@ -65,6 +65,21 @@ template<typename T>
 concept NotConst = not std::is_const_v<std::remove_reference_t<T>>;
 
 
+// lightweight wrapper class to tag an object with a unique identifier
+template <typename T>
+struct Tag
+{
+  constexpr Tag (T& v) : v_(v), id_(__COUNTER__) {};
+  constexpr Tag (T& v, size_t id) : v_(v), id_(id) {};
+  T& v_;
+  size_t id_;
+  operator T&() { return v_; }; // must be first so we can get the reference with auto
+  explicit operator size_t() { return id_; }; // explicit so we have to manually static_cast<size_t>()
+  explicit operator size_t() const { return id_; }; // explicit so we have to manually static_cast<size_t>()
+};
+template <typename T>
+concept IsTag = is_specialization<std::decay_t<T>, Tag>;
+
 // Used to map a container to the corresponding view type
 template<typename ExecutionSpace, typename T>
 struct EquivalentView;
@@ -106,6 +121,14 @@ struct Views
     // specialization)
     template<typename T>
     static typename EquivalentView<ExecutionSpace, T>::type create_view(T&&);
+
+    // If the input is a tag, return a tag
+    template<typename T>
+        requires IsTag<T>
+    static auto create_view(T& tag)
+    {
+        return Tag(create_view(tag.v), tag.id);
+    }
 
     // Specialization for std::vector (default allocator)
     template<typename T>
@@ -201,7 +224,6 @@ auto pack(ParameterTypes&... params)
     return std::make_tuple(std::ref(params)...);
 }
 
-
 RangeExtent<1> range_extent(const ArrayIndex& lower, const ArrayIndex& upper)
 {
     return { lower, upper };
@@ -279,9 +301,9 @@ class Kernel
 
     // Data parameters and views thereof (in the execution spaces that will be considered)
     std::tuple<ParameterTypes&...> data_params_;
-    std::tuple<typename EquivalentView<HostExecutionSpace, ParameterTypes>::type...>
+    std::tuple<Tag<EquivalentView<HostExecutionSpace, ParameterTypes>>...>
       data_views_host_;
-    std::tuple<typename EquivalentView<DeviceExecutionSpace, ParameterTypes>::type...>
+    std::tuple<Tag<EquivalentView<DeviceExecutionSpace, ParameterTypes>>...>
       data_views_device_;
 
     // The kernel code that will be called in an executation on the respective views
@@ -315,16 +337,18 @@ struct DataParamRef
 };
 
 template<typename KernelsTuple, std::size_t I, std::size_t J, std::size_t K, std::size_t... L>
-constexpr std::vector<std::size_t> match_input_data_param_helper(const KernelsTuple& algorithm_kernels,
+constexpr auto match_input_data_param_helper(const KernelsTuple& algorithm_kernels,
                                              std::integer_sequence<std::size_t, L...>)
 {
     auto& this_kernel     = std::get<I>(algorithm_kernels);
     auto& this_data       = std::get<J>(this_kernel.data_params_);
     auto& compared_kernel = std::get<K>(algorithm_kernels);
 
-    return { [&](auto& compared_data) -> std::size_t
+    return std::make_tuple([&](auto& compared_data) -> std::size_t
              {
-                 if (&this_data == &compared_data && std::is_const_v<decltype(compared_data)>)
+                 if (static_cast<size_t>(this_data)
+                     == static_cast<size_t>(compared_data)
+                     && std::is_const_v<decltype(compared_data)>)
                  {
                      return L;
                  }
@@ -332,7 +356,19 @@ constexpr std::vector<std::size_t> match_input_data_param_helper(const KernelsTu
                  {
                      return std::numeric_limits<std::size_t>::max();
                  }
-             }(std::get<L>(compared_kernel.data_params_))... };
+             }(std::get<L>(compared_kernel.data_params_))... );
+}
+
+
+// Helper function to find the smallest value in a tuple
+template <size_t I = 0, typename... Ts>
+constexpr int min_value_in_tuple(const std::tuple<Ts...>& myTuple, int currentMin = std::numeric_limits<int>::max()) {
+    if constexpr (I == sizeof...(Ts)) {
+        return currentMin;
+    } else {
+        const int currentValue = std::get<I>(myTuple);
+        return min_value_in_tuple<I + 1>(myTuple, std::min(currentMin, currentValue));
+    }
 }
 
 // I - index of kernel in KernelsTuple
@@ -345,7 +381,7 @@ constexpr std::size_t match_input_data_param(const KernelsTuple& algorithm_kerne
                     std::get<I>(algorithm_kernels).data_params_))>>,
                   "kernel[I].data[J] is not an input (it is not const)");
 
-    auto& this_kernel     = std::get<I>(algorithm_kernels);
+    auto& this_kernel     = std::get<I>(algorithm_kernels); // this should be the Ith Tag's value "v"
     auto& this_data       = std::get<J>(this_kernel.data_params_);
     auto& compared_kernel = std::get<K>(algorithm_kernels);
 
@@ -355,7 +391,7 @@ constexpr std::size_t match_input_data_param(const KernelsTuple& algorithm_kerne
       algorithm_kernels,
       std::make_index_sequence<std::tuple_size_v<decltype(compared_kernel.data_params_)>> {});
 
-    return *std::min_element(matches.begin(), matches.end());
+    return min_value_in_tuple(matches);
 }
 
 // Find dependencies for a single
@@ -548,6 +584,34 @@ class Algorithm
     };
 };
 
+enum Data {X, Y, Z, W};
+
+template <int k, int v>
+struct kv {
+  static const int key = k;
+  static const int value = v;
+};
+
+template <int default_value, typename... KVs>
+struct ct_map;
+
+template <int default_value>
+struct ct_map<default_value> {
+  template <int>
+  struct get {
+    static const int val = default_value;
+  };
+};
+
+template <int default_value, int k, int v, typename... rest>
+struct ct_map<default_value, kv<k, v>, rest...> {
+  template <int kk>
+  struct get {
+    static const int val = (kk == k) ? v : ct_map<default_value, rest...>::template get<kk>::val;
+  };
+};
+
+
 
 int main(int argc, char* argv[])
 {
@@ -564,10 +628,13 @@ int main(int argc, char* argv[])
     std::iota(y.begin(), y.end(), 0.0);
     std::vector<double> z(N);
     std::vector<double> w(N);
+   
+    // use tag to label data params with unique IDs
+    Tag X(x), Y(y), Z(z), W(w);
 
     Kernel k1(
       "1D vector-vector multiply",
-      pack(std::as_const(x), std::as_const(y), z),
+      pack(std::as_const(X), std::as_const(Y), Z),
       []<typename ViewsTuple, typename Index>(ViewsTuple& views, const Index& i)
       {
           auto& x = std::get<0>(views);
@@ -579,7 +646,7 @@ int main(int argc, char* argv[])
 
     Kernel k2(
       "1D vector-vector multiply",
-      pack(std::as_const(x), std::as_const(z), w),
+      pack(std::as_const(X), std::as_const(Z), W),
       []<typename ViewsTuple, typename Index>(ViewsTuple& views, const Index& i)
       {
           auto& x = std::get<0>(views);
