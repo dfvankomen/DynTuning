@@ -64,20 +64,38 @@ concept IsConst = std::is_const_v<std::remove_reference_t<T>>;
 template<typename T>
 concept NotConst = not std::is_const_v<std::remove_reference_t<T>>;
 
-
+// Note:
+//   The issue now is that id_ is still a "runtime value", i.e. on the stack, since the class is not instantiated
+//   until runtime in this case.  Instead, we need to make it part of the template parameters.
+// 
 // lightweight wrapper class to tag an object with a unique identifier
-template <typename T>
+template<typename T>
 struct Tag
 {
-  constexpr Tag (T& v) : v_(v), id_(__COUNTER__) {};
-  constexpr Tag (T& v, size_t id) : v_(v), id_(id) {};
-  T& v_;
-  size_t id_;
-  operator T&() { return v_; }; // must be first so we can get the reference with auto
-  explicit operator size_t() { return id_; }; // explicit so we have to manually static_cast<size_t>()
-  explicit operator size_t() const { return id_; }; // explicit so we have to manually static_cast<size_t>()
+    constexpr Tag(T& v)
+      : v_(v)
+      , id_(__COUNTER__) {};
+    // constexpr Tag (T& v, size_t id) : v_(v), id_(id) {};
+
+    using value_type = T; // Type of underlying data
+
+    T& v_;
+    size_t id_;
+
+    operator T&()
+    {
+        return v_;
+    }; // must be first so we can get the reference with auto
+    explicit operator size_t()
+    {
+        return id_;
+    }; // explicit so we have to manually static_cast<size_t>()
+    explicit operator size_t() const
+    {
+        return id_;
+    }; // explicit so we have to manually static_cast<size_t>()
 };
-template <typename T>
+template<typename T>
 concept IsTag = is_specialization<std::decay_t<T>, Tag>;
 
 // Used to map a container to the corresponding view type
@@ -97,6 +115,20 @@ struct EquivalentView<ExecutionSpace, T>
     using type = Kokkos::View<value_type*,
                               typename ExecutionSpace::array_layout,
                               typename ExecutionSpace::memory_space>;
+};
+
+template<typename ExecutionSpace, typename T>
+    requires IsTag<T>
+struct EquivalentView<ExecutionSpace, T>
+{
+    using underlying_view_type =
+      EquivalentView<ExecutionSpace, typename std::decay_t<T>::value_type>;
+
+    // Type of the scalar in the data structure
+    using value_type = underlying_view_type::value_type;
+
+    // Type for the equivalent view of the data structure
+    using type = underlying_view_type::type;
 };
 
 // template<typename ExecutionSpace, typename T>
@@ -122,12 +154,13 @@ struct Views
     template<typename T>
     static typename EquivalentView<ExecutionSpace, T>::type create_view(T&&);
 
-    // If the input is a tag, return a tag
+
+    // Specialization for Tag, which will call create_view for underlying type
     template<typename T>
         requires IsTag<T>
     static auto create_view(T& tag)
     {
-        return Tag(create_view(tag.v), tag.id);
+        return create_view(tag.v_);
     }
 
     // Specialization for std::vector (default allocator)
@@ -164,7 +197,7 @@ struct Views
     }
 
     template<typename... ParameterTypes>
-    static auto create_views_from_tuple(std::tuple<ParameterTypes...>& params_tuple)
+    static auto create_views_from_tuple(std::tuple<ParameterTypes...> params_tuple)
     {
         return create_views_helper(params_tuple,
                                    std::make_index_sequence<sizeof...(ParameterTypes)> {});
@@ -301,9 +334,9 @@ class Kernel
 
     // Data parameters and views thereof (in the execution spaces that will be considered)
     std::tuple<ParameterTypes&...> data_params_;
-    std::tuple<Tag<EquivalentView<HostExecutionSpace, ParameterTypes>>...>
+    std::tuple<typename EquivalentView<HostExecutionSpace, ParameterTypes>::type...>
       data_views_host_;
-    std::tuple<Tag<EquivalentView<DeviceExecutionSpace, ParameterTypes>>...>
+    std::tuple<typename EquivalentView<DeviceExecutionSpace, ParameterTypes>::type...>
       data_views_device_;
 
     // The kernel code that will be called in an executation on the respective views
@@ -343,29 +376,37 @@ constexpr auto match_input_data_param_helper(const KernelsTuple& algorithm_kerne
     auto& this_kernel     = std::get<I>(algorithm_kernels);
     auto& this_data       = std::get<J>(this_kernel.data_params_);
     auto& compared_kernel = std::get<K>(algorithm_kernels);
+    
+    static_assert(IsTag<decltype(this_data)>);
 
-    return std::make_tuple([&](auto& compared_data) -> std::size_t
-             {
-                 if (static_cast<size_t>(this_data)
-                     == static_cast<size_t>(compared_data)
-                     && std::is_const_v<decltype(compared_data)>)
-                 {
-                     return L;
-                 }
-                 else
-                 {
-                     return std::numeric_limits<std::size_t>::max();
-                 }
-             }(std::get<L>(compared_kernel.data_params_))... );
+    return std::make_tuple(
+      [&](auto& compared_data) -> std::size_t
+      {
+          static_assert(IsTag<decltype(compared_data)>);
+          if (this_data.id_ == compared_data.id_ &&
+              std::is_const_v<decltype(compared_data)>)
+          {
+              return L;
+          }
+          else
+          {
+              return std::numeric_limits<std::size_t>::max();
+          }
+      }(std::get<L>(compared_kernel.data_params_))...);
 }
 
 
 // Helper function to find the smallest value in a tuple
-template <size_t I = 0, typename... Ts>
-constexpr int min_value_in_tuple(const std::tuple<Ts...>& myTuple, int currentMin = std::numeric_limits<int>::max()) {
-    if constexpr (I == sizeof...(Ts)) {
+template<size_t I = 0, typename... Ts>
+constexpr int min_value_in_tuple(const std::tuple<Ts...>& myTuple,
+                                 int currentMin = std::numeric_limits<int>::max())
+{
+    if constexpr (I == sizeof...(Ts))
+    {
         return currentMin;
-    } else {
+    }
+    else
+    {
         const int currentValue = std::get<I>(myTuple);
         return min_value_in_tuple<I + 1>(myTuple, std::min(currentMin, currentValue));
     }
@@ -381,8 +422,8 @@ constexpr std::size_t match_input_data_param(const KernelsTuple& algorithm_kerne
                     std::get<I>(algorithm_kernels).data_params_))>>,
                   "kernel[I].data[J] is not an input (it is not const)");
 
-    auto& this_kernel     = std::get<I>(algorithm_kernels); // this should be the Ith Tag's value "v"
-    auto& this_data       = std::get<J>(this_kernel.data_params_);
+    auto& this_kernel = std::get<I>(algorithm_kernels); // this should be the Ith Tag's value "v"
+    auto& this_data   = std::get<J>(this_kernel.data_params_);
     auto& compared_kernel = std::get<K>(algorithm_kernels);
 
     // Loop over the data parameters in kernel[K] and look for a match to kernel[I]->data[J]
@@ -584,31 +625,43 @@ class Algorithm
     };
 };
 
-enum Data {X, Y, Z, W};
-
-template <int k, int v>
-struct kv {
-  static const int key = k;
-  static const int value = v;
+enum Data
+{
+    X,
+    Y,
+    Z,
+    W
 };
 
-template <int default_value, typename... KVs>
+template<int k, int v>
+struct kv
+{
+    static const int key   = k;
+    static const int value = v;
+};
+
+template<int default_value, typename... KVs>
 struct ct_map;
 
-template <int default_value>
-struct ct_map<default_value> {
-  template <int>
-  struct get {
-    static const int val = default_value;
-  };
+template<int default_value>
+struct ct_map<default_value>
+{
+    template<int>
+    struct get
+    {
+        static const int val = default_value;
+    };
 };
 
-template <int default_value, int k, int v, typename... rest>
-struct ct_map<default_value, kv<k, v>, rest...> {
-  template <int kk>
-  struct get {
-    static const int val = (kk == k) ? v : ct_map<default_value, rest...>::template get<kk>::val;
-  };
+template<int default_value, int k, int v, typename... rest>
+struct ct_map<default_value, kv<k, v>, rest...>
+{
+    template<int kk>
+    struct get
+    {
+        static const int val =
+          (kk == k) ? v : ct_map<default_value, rest...>::template get<kk>::val;
+    };
 };
 
 
@@ -628,9 +681,26 @@ int main(int argc, char* argv[])
     std::iota(y.begin(), y.end(), 0.0);
     std::vector<double> z(N);
     std::vector<double> w(N);
-   
+
     // use tag to label data params with unique IDs
     Tag X(x), Y(y), Z(z), W(w);
+
+    { // Some static assertions to make sure I understand the types
+        auto view_of_tag = Views<Kokkos::Serial>::create_view(std::as_const(X));
+        static_assert(
+          std::is_same_v<decltype(view_of_tag),
+                         EquivalentView<Kokkos::Serial, decltype(std::as_const(X))>::type>);
+
+        auto args = pack(std::as_const(X), Y);
+        static_assert(
+          std::is_same_v<decltype(args), std::tuple<decltype(std::as_const(X))&, decltype(Y)&>>);
+
+        auto views = Views<Kokkos::Serial>::create_views_from_tuple(args);
+        static_assert(std::is_same_v<
+                      decltype(views),
+                      std::tuple<EquivalentView<Kokkos::Serial, decltype(std::as_const(X))>::type,
+                                 EquivalentView<Kokkos::Serial, decltype(Y)>::type>>);
+    }
 
     Kernel k1(
       "1D vector-vector multiply",
@@ -662,7 +732,7 @@ int main(int argc, char* argv[])
 
     // Create an Algorithm object
     Algorithm algo(pack(k1, k2));
-
+    
     constexpr auto match = match_input_data_param<0, 0, 0>(algo.kernels_);
 
 
