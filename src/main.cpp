@@ -4,9 +4,8 @@
 // * Inputs and outputs are all ndarrays at the element level
 //
 
-#include "Kokkos_Core.hpp"
-
 #include "CompileTimeCounter.h"
+#include "Kokkos_Core.hpp"
 
 #include <algorithm>
 #include <numeric>
@@ -96,13 +95,17 @@ constexpr auto make_tag(T& v)
 
 #define TAG(x) make_tag<__COUNTER__>(x);
 
-
 template<typename T>
 concept IsTag = std::is_same_v<typename std::decay_t<T>::is_tag, std::true_type>;
 
-// Used to map a container to the corresponding view type
-template<typename ExecutionSpace, typename T>
-struct EquivalentView;
+/// Checks if the Ith tag of DataTuple1 matches the Jth tag of DataTuple2
+template<typename DataTuple1, int I, typename DataTuple2, int J>
+concept DoTagsMatch = std::is_same_v<std::decay_t<std::tuple_element_t<I, DataTuple1>>,
+                                     std::decay_t<std::tuple_element_t<J, DataTuple2>>>;
+
+  // Used to map a container to the corresponding view type
+  template<typename ExecutionSpace, typename T>
+  struct EquivalentView;
 
 template<typename ExecutionSpace, typename T>
     requires IsStdVector<T>
@@ -746,14 +749,10 @@ int main(int argc, char* argv[])
     Algorithm algo(pack(k1, k2));
 
     // k1.data_params[0] should match k2.data_params[0]
-    static_assert(std::is_same_v<std::decay_t<std::tuple_element_t<0, decltype(k1.data_params_)>>,
-                                 std::decay_t<std::tuple_element_t<0, decltype(k2.data_params_)>>>);
+    static_assert(DoTagsMatch<decltype(k1.data_params_), 0, decltype(k2.data_params_), 0>);
 
     // k1.data_params[0] should not match k2.data_params[1]
-    static_assert(
-      !std::is_same_v<std::decay_t<std::tuple_element_t<0, decltype(k1.data_params_)>>,
-                      std::decay_t<std::tuple_element_t<1, decltype(k2.data_params_)>>>);
-
+    static_assert(!DoTagsMatch<decltype(k1.data_params_), 0, decltype(k2.data_params_), 1>);
 
 
 
