@@ -11,17 +11,15 @@
 #include <numeric>
 #include <tuple>
 #include <vector>
-// #include "Eigen"
+
+#ifdef USE_EIGEN
+  #include "Eigen"
+#endif
 
 #define NDEBUG
 #ifdef NDEBUG
-#include <iostream>
+  #include <iostream>
 #endif
-
-
-//
-
-
 
 #ifndef KOKKOS_HOST
 #define KOKKOS_HOST Serial
@@ -41,6 +39,46 @@
     }
 
 
+//=============================================================================
+// Utilities
+//=============================================================================
+
+/// @brief Packs a list of references to class instances into a tuple
+/// @tparam ...ParameterTypes
+/// @param ...params
+/// @return
+template<typename... ParameterTypes>
+auto pack(ParameterTypes&... params)
+{
+    // note: std::forward loses the reference qualifer... check into this later
+    return std::make_tuple(std::ref(params)...);
+}
+
+template<typename T>
+concept IsConst = std::is_const_v<std::remove_reference_t<T>>;
+
+template<typename T>
+concept NotConst = not std::is_const_v<std::remove_reference_t<T>>;
+
+
+// utility function for iterating over a tuple of unknown length
+template<typename LambdaType, std::size_t I = 0, typename... T>
+inline typename std::enable_if<I == sizeof...(T), void>::type iter_tuple(
+    const std::tuple<T...>& t, const LambdaType& lambda) {}
+template<typename LambdaType, std::size_t I = 0, typename... T>
+  inline typename std::enable_if <
+  I<sizeof...(T), void>::type iter_tuple(const std::tuple<T...>& t, const LambdaType& lambda)
+{
+    auto& elem = std::get<I>(t);
+    lambda(elem);
+    iter_tuple<LambdaType, I + 1, T...>(t, lambda);
+}
+
+
+//=============================================================================
+// Specializations
+//=============================================================================
+
 // Concepts that will be used for EquivalentView
 
 template<class, template<class...> class>
@@ -51,19 +89,14 @@ inline constexpr bool is_specialization<T<Args...>, T> = true;
 template<typename T>
 concept IsStdVector = is_specialization<std::decay_t<T>, std::vector>;
 
-// template<typename T>
-// concept IsEigenMatrix = std::is_base_of_v<Eigen::MatrixBase<std::decay_t<T> >, std::decay_t<T> >;
-
-template<typename EigenT, typename KokkosLayout>
-concept IsLayoutSame =
-  (std::is_same_v<KokkosLayout, Kokkos::LayoutRight> && std::decay_t<EigenT>::IsRowMajor == 1) ||
-  (std::is_same_v<KokkosLayout, Kokkos::LayoutLeft> && std::decay_t<EigenT>::IsRowMajor == 0);
-
+#ifdef USE_EIGEN
 template<typename T>
-concept IsConst = std::is_const_v<std::remove_reference_t<T>>;
+concept IsEigenMatrix = std::is_base_of_v<Eigen::MatrixBase<std::decay_t<T> >, std::decay_t<T> >;
+#endif
 
-template<typename T>
-concept NotConst = not std::is_const_v<std::remove_reference_t<T>>;
+//=============================================================================
+// Tag
+//=============================================================================
 
 // Note:
 //   The issue now is that id_ is still a "runtime value", i.e. on the stack, since the class is not
@@ -103,10 +136,14 @@ template<typename DataTuple1, int I, typename DataTuple2, int J>
 concept DoTagsMatch = std::is_same_v<std::decay_t<std::tuple_element_t<I, DataTuple1>>,
                                      std::decay_t<std::tuple_element_t<J, DataTuple2>>>;
 
-  // Used to map a container to the corresponding view type
-  template<typename ExecutionSpace, typename T>
-  struct EquivalentView;
+//=============================================================================
+// EquivalentView
+//=============================================================================
 
+// Used to map a container to the corresponding view type
+
+template<typename ExecutionSpace, typename T>
+struct EquivalentView;
 template<typename ExecutionSpace, typename T>
     requires IsStdVector<T>
 struct EquivalentView<ExecutionSpace, T>
@@ -139,29 +176,41 @@ struct EquivalentView<ExecutionSpace, T>
     using type = typename underlying_view_type::type;
 };
 
-// template<typename ExecutionSpace, typename T>
-//     requires IsEigenMatrix<T>
-// struct EquivalentView<ExecutionSpace, T>
-//{
-//     // Type of the scalar in the data structure
-//     using value_type = std::conditional_t<std::is_const_v<T>,
-//                                           const typename std::remove_reference_t<T>::value_type,
-//                                           typename std::remove_reference_t<T>::value_type>;
-//
-//     // Type for the equivalent view of the data structure
-//     using type = Kokkos::View<value_type**,
-//                               typename ExecutionSpace::array_layout,
-//                               typename ExecutionSpace::memory_space>;
-// };
+#ifdef USE_EIGEN
+template<typename EigenT, typename KokkosLayout>
+concept IsLayoutSame =
+  (std::is_same_v<KokkosLayout, Kokkos::LayoutRight> && std::decay_t<EigenT>::IsRowMajor == 1) ||
+  (std::is_same_v<KokkosLayout, Kokkos::LayoutLeft> && std::decay_t<EigenT>::IsRowMajor == 0);
+#endif
+
+#ifdef USE_EIGEN
+template<typename ExecutionSpace, typename T>
+    requires IsEigenMatrix<T>
+struct EquivalentView<ExecutionSpace, T>
+{
+    // Type of the scalar in the data structure
+    using value_type = std::conditional_t<std::is_const_v<T>,
+                                          const typename std::remove_reference_t<T>::value_type,
+                                          typename std::remove_reference_t<T>::value_type>;
+
+    // Type for the equivalent view of the data structure
+    using type = Kokkos::View<value_type**,
+                              typename ExecutionSpace::array_layout,
+                              typename ExecutionSpace::memory_space>;
+};
+#endif
+
+//=============================================================================
+// Views
+//=============================================================================
 
 template<typename ExecutionSpace>
 struct Views
 {
-    // Create a view for a given executation space and C++ data structure(each structure needs a
-    // specialization)
+    // Create a view for a given executation space and C++ data structure
+    // (each structure needs a specialization)
     template<typename T>
     static typename EquivalentView<ExecutionSpace, T>::type create_view(T&&);
-
 
     // Specialization for Tag, which will call create_view for underlying type
     template<typename T>
@@ -179,14 +228,16 @@ struct Views
         return typename EquivalentView<ExecutionSpace, T>::type(vector.data(), vector.size());
     }
 
-    //// Specialization for Eigen matrix
-    // template<typename T>
-    //     requires IsEigenMatrix<T>
-    // static auto create_view(T& matrix)
-    //{
-    //     using ViewType = typename EquivalentView<ExecutionSpace, T>::type;
-    //     return ViewType(matrix.data(), matrix.rows(), matrix.cols());
-    // }
+    #ifdef USE_EIGEN
+    // Specialization for Eigen matrix
+    template<typename T>
+        requires IsEigenMatrix<T>
+    static auto create_view(T& matrix)
+    {
+        using ViewType = typename EquivalentView<ExecutionSpace, T>::type;
+        return ViewType(matrix.data(), matrix.rows(), matrix.cols());
+    }
+    #endif
 
     // Creates view for a given execution space for a variadic list of data structures
     // (each needs a create_view specialization)
@@ -211,6 +262,11 @@ struct Views
     }
 };
 
+
+//=============================================================================
+// RangePolicy
+//=============================================================================
+
 // Used to rank to the corresponding RangePolicy type
 template<int KernelRank, typename ExecutionSpace>
 struct RangePolicy;
@@ -228,6 +284,11 @@ struct RangePolicy
 {
     using type = Kokkos::MDRangePolicy<ExecutionSpace, Kokkos::Rank<KernelRank>>;
 };
+
+
+//=============================================================================
+// RangeExtent
+//=============================================================================
 
 using ArrayIndex = std::uint64_t;
 
@@ -253,16 +314,6 @@ struct RangeExtent
     value_type upper;
 };
 
-/// @brief Packs a list of references to class instances into a tuple
-/// @tparam ...ParameterTypes
-/// @param ...params
-/// @return
-template<typename... ParameterTypes>
-auto pack(ParameterTypes&... params)
-{
-    // note: std::forward loses the reference qualifer... check into this later
-    return std::make_tuple(std::ref(params)...);
-}
 
 RangeExtent<1> range_extent(const ArrayIndex& lower, const ArrayIndex& upper)
 {
@@ -274,6 +325,11 @@ RangeExtent<2> range_extent(const Kokkos::Array<ArrayIndex, 2>& lower,
 {
     return { lower, upper };
 }
+
+
+//=============================================================================
+// Kernel
+//=============================================================================
 
 template<int KernelRank, typename LambdaType, typename... ParameterTypes>
 class Kernel
@@ -356,6 +412,9 @@ class Kernel
 };
 
 
+//=============================================================================
+// Data Graph
+//=============================================================================
 
 // Source: https://www.fluentcpp.com/2021/03/05/stdindex_sequence-and-its-improvement-in-c20/
 template<class Tuple, class F>
@@ -478,111 +537,74 @@ struct DataGraphNode
     // with the index of the data parameter in those downstream kernels.
     static constexpr std::tuple<std::tuple<DataParamRef>> output_dependencies_;
 };
-
+    
 /*
-
-// utility function for iterating over a tuple of unknown length
-template<typename LambdaType, std::size_t I = 0, typename... T>
-inline typename std::enable_if<I == sizeof...(T), void>::type iter_tuple(const std::tuple<T...>& t,
-                                                                         const LambdaType& lambda)
-{
+// utility function to check for a data dependency
+template <typename TagTypeI, typename TagTypeJ>
+constexpr bool is_dependent(TagTypeI& tag1, TagTypeJ& tag2) {
+    // ID match and former is not const but latter is const
+    if constexpr ((tag1::id == tag2::id) && (!std::is_const(tag1)) && (std::is_const(tag2))) {
+        return true;
+    } else {
+        return false;
+    }
 }
-
-template<typename LambdaType, std::size_t I = 0, typename... T>
-  inline typename std::enable_if <
-  I<sizeof...(T), void>::type iter_tuple(const std::tuple<T...>& t, const LambdaType& lambda)
-{
-    auto& elem = std::get<I>(t);
-    lambda(elem);
-    iter_tuple<LambdaType, I + 1, T...>(t, lambda);
+// Data params loop over J
+template <std::size_t I, std::size_t J, typename KernelTypeI, typename KernelTypeJ>
+constexpr void compare_data_params_IJ(KernelTypeI& k1, KernelTypeJ& k2) {
+    if constexpr (is_dependent(std::get<I>(k1), std::get<J>(k2))) {
+        // set up a copy operation for kernel k1 to copy to the device of k2
+    }
+    if constexpr (J == 0)
+        return;
+    else
+        compare_data_params_IJ<I,J-1>(k1, k2);
 }
-
-// utility function to check whether a parameter is const
-template<typename ParamType>
-bool is_const(ParamType& param)
-{
-    return false;
+// Data params loop over I
+template <std::size_t I, typename KernelTypeI, typename KernelTypeJ>
+constexpr void compare_data_params_I(KernelTypeI& k1, KernelTypeJ& k2) {
+    compare_data_params_IJ<I,std::tuple_size_v<decltype(k2.data_params_)> - 1>(k1, k2);
+    if constexpr (I == 0)
+        return;
+    else
+      compare_data_params_I<I-1>(k1, k2);
 }
-template<typename ParamType>
-bool is_const(const ParamType& param)
-{
-    return true;
+// Init comparison of data params
+template <typename KernelTypeI, typename KernelTypeJ>
+constexpr void compare_data_params(KernelTypeI& k1, KernelTypeJ& k2) {
+    compare_data_params_I<std::tuple_size_v<decltype(k1.data_params_)> - 1>(k1, k2);
 }
-
-//// Helper function to create a tuple of references
-// template <typename... Args>
-// auto create_tuple_of_references(Args&&... args) {
-//       return std::forward_as_tuple(std::forward<Args>(args)...);
-// }
-////auto tuple_of_references = create_tuple_of_references(k1, k2, k3);
-
-// 1) start with some kernels
-//  Kernel k1(...);
-//  Kernel k2(...);
-//  kernel k3(...);
-
-// 2) create a tuple of KernelInfo, one for each kernel
-
-// utility to create a tuple of N objects of same type T at compile time
-template<size_t I, typename T>
-struct tuple_n
-{
-    template<typename... Args>
-    using type = typename tuple_n<I - 1, T>::template type<T, Args...>;
-};
-
-template<typename T>
-struct tuple_n<0, T>
-{
-    template<typename... Args>
-    using type = std::tuple<Args...>;
-};
-template<size_t I, typename T>
-using tuple_of = typename tuple_n<I, T>::template type<>;
-
-// helper function to create a tuple of T* based on the number data params a kernel has
-template<typename T, typename KernelType>
-constexpr std::tuple<T*> create_kernel_info_ptr_tuple(KernelType& k)
-{
-    return tuple_of<std::tuple_size<decltype(k.data_params_)>::value, T*> {};
+// Kernels loop over I
+template <std::size_t I, std::size_t J, typename... KernelsTuple>
+constexpr void compare_kernels_IJ(const std::tuple<KernelsTuple...>& kernels) {
+    compare_data_params(std::get<I>(kernels), std::get<J>(kernels));
+    if constexpr (I == 0)
+        return;
+    else
+        compare_kernels_IJ<I-1,J>(kernels);
 }
-
-// struct to act as nodes in the computation graph
-template<typename KernelType>
-struct KernelInfo
-{
-    constexpr KernelInfo(KernelType& k)
-      : kernel(k)
-      , next(create_kernel_info_ptr_tuple<KernelInfo>(k)) {};
-    KernelType& kernel;
-    std::tuple<KernelInfo*> next;
-};
-
-// Helper function to initialize an instance of KernelInfo
-template<typename KernelType>
-constexpr KernelInfo<KernelType> create_kernel_info(KernelType& k)
-{
-    return { k };
+// Kernels loop over J
+template <std::size_t J, typename... KernelsTuple>
+constexpr void compare_kernels_J(const std::tuple<KernelsTuple...>& kernels) {
+    compare_kernels_IJ<J-1,J>(kernels);
+    if constexpr (J == 0)
+        return;
+    else
+        compare_kernels_J<J-1>(kernels);
 }
-
-// Helper function to initialize a tuple of KernelInfo from a pack of Kernels
-template<typename KernelType, size_t... Is>
-constexpr auto create_kernel_info_tuple_impl(KernelType& k, std::index_sequence<Is...>)
-{
-    // return std::make_tuple(create_kernel_info<KernelType>(std::get<Is>(k))...);
-    return std::make_tuple(
-      create_kernel_info<std::tuple_element_t<Is, KernelType>>(std::get<Is>(k))...);
-}
-template<typename KernelType>
-constexpr auto create_kernel_info_tuple(KernelType& k)
-{
-    return create_kernel_info_tuple_impl(
-      k,
-      std::make_index_sequence<std::tuple_size_v<KernelType>> {});
+// Init comparison of kernels
+template <typename... KernelsTuple>
+constexpr void deduce_dependencies(const std::tuple<KernelsTuple...>& kernels) {
+    compare_kernels_J<std::tuple_size_v<decltype(kernels)> - 1>(kernels);
 }
 */
 
-// main algorithm function
+//=============================================================================
+// Algorithm
+//=============================================================================
+
+// main algorithm object
+
 template<typename... KernelTypes>
 class Algorithm
 {
@@ -590,86 +612,35 @@ class Algorithm
     // constructor should initialize and empty vector
     constexpr Algorithm(std::tuple<KernelTypes&...> kernels)
       : kernels_(kernels)
-      //, kernel_graph_(create_kernel_info_tuple(kernels))
       {
-          // iter_tuple(kernels_,
-          //            []<typename KernelType>(KernelType& kernel)
-          //            { printf("Registered Kernel: %s\n", kernel.kernel_name_.c_str()); });
+        #ifdef NDEBUG
+            iter_tuple(kernels_, []<typename KernelType>(KernelType& kernel) {
+                printf("Registered Kernel: %s\n", kernel.kernel_name_.c_str());
+            });
+        #endif
       };
     ~Algorithm() {};
 
     // the core of this class is a tuple of kernels
     std::tuple<KernelTypes&...> kernels_;
-    // std::tuple<KernelInfo<KernelTypes>...> kernel_graph_;
-
-    /*
-    // deduce data relationships
-    void _deduce_dependencies()
-    {
-      iter_tuple(kernels_, []<typename KernelType>(KernelType& kernel) {
-        printf("Kernel: %s\n", kernel.kernel_name_.c_str());
-        iter_tuple(kernel.data_params_, []<typename ParamType>(ParamType& param) {
-          // NOTE can access name of a view with view.label()
-          //   if param has no dependents set next_device == HOST
-          //   if param has at least 1 dependent
-          //     set next_device to the device of the next kernel that depends on it
-          //     each kernel should have a next_device for each param
-          //     execute a copy for each param to their own next_device
-          if (check_is_const(param))
-            printf("param is const\n");
-          else
-            printf("param is not const\n");
-        });
-      });
-    };
-    */
 
     // call all kernels
     void call()
     {
-        iter_tuple(kernels_,
-                   []<typename KernelType>(KernelType& kernel) { TIMING(kernel, kernel.call()); });
+        iter_tuple(
+            kernels_,
+            []<typename KernelType>(KernelType& kernel)
+            {
+                TIMING(kernel, kernel.call());
+            }
+        );
     };
 };
 
-enum Data
-{
-    X,
-    Y,
-    Z,
-    W
-};
 
-template<int k, int v>
-struct kv
-{
-    static const int key   = k;
-    static const int value = v;
-};
-
-template<int default_value, typename... KVs>
-struct ct_map;
-
-template<int default_value>
-struct ct_map<default_value>
-{
-    template<int>
-    struct get
-    {
-        static const int val = default_value;
-    };
-};
-
-template<int default_value, int k, int v, typename... rest>
-struct ct_map<default_value, kv<k, v>, rest...>
-{
-    template<int kk>
-    struct get
-    {
-        static const int val =
-          (kk == k) ? v : ct_map<default_value, rest...>::template get<kk>::val;
-    };
-};
+//=============================================================================
+// Main
+//=============================================================================
 
 int main(int argc, char* argv[])
 {
