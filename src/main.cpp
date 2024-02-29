@@ -65,38 +65,35 @@ template<typename T>
 concept NotConst = not std::is_const_v<std::remove_reference_t<T>>;
 
 // Note:
-//   The issue now is that id_ is still a "runtime value", i.e. on the stack, since the class is not instantiated
-//   until runtime in this case.  Instead, we need to make it part of the template parameters.
-// 
+//   The issue now is that id_ is still a "runtime value", i.e. on the stack, since the class is not
+//   instantiated until runtime in this case.  Instead, we need to make it part of the template
+//   parameters.
+//
 // lightweight wrapper class to tag an object with a unique identifier
-template<typename T>
+template<int TagID, typename T>
 struct Tag
 {
-    constexpr Tag(T& v)
-      : v_(v)
-      , id_(__COUNTER__) {};
-    // constexpr Tag (T& v, size_t id) : v_(v), id_(id) {};
-
+    using is_tag     = std::true_type;
     using value_type = T; // Type of underlying data
 
-    T& v_;
-    size_t id_;
+    std::remove_reference_t<T>& v_;
+
+    static constexpr int id = TagID;
 
     operator T&()
     {
         return v_;
-    }; // must be first so we can get the reference with auto
-    explicit operator size_t()
-    {
-        return id_;
-    }; // explicit so we have to manually static_cast<size_t>()
-    explicit operator size_t() const
-    {
-        return id_;
-    }; // explicit so we have to manually static_cast<size_t>()
+    };
 };
+
 template<typename T>
-concept IsTag = is_specialization<std::decay_t<T>, Tag>;
+auto make_tag(T& v)
+{
+    return Tag<__COUNTER__, T>({ v });
+}
+
+template<typename T>
+concept IsTag = std::is_same_v<typename std::decay_t<T>::is_tag, std::true_type>;
 
 // Used to map a container to the corresponding view type
 template<typename ExecutionSpace, typename T>
@@ -107,9 +104,10 @@ template<typename ExecutionSpace, typename T>
 struct EquivalentView<ExecutionSpace, T>
 {
     // Type of the scalar in the data structure
-    using value_type = std::conditional_t<std::is_const_v<T>,
-                                          const typename std::remove_reference_t<T>::value_type,
-                                          typename std::remove_reference_t<T>::value_type>;
+    using value_type =
+      std::conditional_t<std::is_const_v<T>,
+                         std::add_const_t<typename std::remove_reference_t<T>::value_type>,
+                         typename std::remove_reference_t<T>::value_type>;
 
     // Type for the equivalent view of the data structure
     using type = Kokkos::View<value_type*,
@@ -121,14 +119,16 @@ template<typename ExecutionSpace, typename T>
     requires IsTag<T>
 struct EquivalentView<ExecutionSpace, T>
 {
-    using underlying_view_type =
-      EquivalentView<ExecutionSpace, typename std::decay_t<T>::value_type>;
+    using underlying_view_type = std::conditional_t<
+      std::is_const_v<std::remove_reference_t<T>>,
+      EquivalentView<ExecutionSpace, std::add_const_t<std::decay_t<T>::value_type>>,
+      EquivalentView<ExecutionSpace, typename std::decay_t<T>::value_type>>;
 
     // Type of the scalar in the data structure
-    using value_type = underlying_view_type::value_type;
+    using value_type = typename underlying_view_type::value_type;
 
     // Type for the equivalent view of the data structure
-    using type = underlying_view_type::type;
+    using type = typename underlying_view_type::type;
 };
 
 // template<typename ExecutionSpace, typename T>
@@ -157,10 +157,10 @@ struct Views
 
     // Specialization for Tag, which will call create_view for underlying type
     template<typename T>
-        requires IsTag<T>
+        requires IsTag<T> && IsStdVector<T>
     static auto create_view(T& tag)
     {
-        return create_view(tag.v_);
+        return typename EquivalentView<ExecutionSpace, T>::type(vector.data(), vector.size());
     }
 
     // Specialization for std::vector (default allocator)
@@ -168,8 +168,7 @@ struct Views
         requires IsStdVector<T>
     static auto create_view(T& vector)
     {
-        using ViewType = typename EquivalentView<ExecutionSpace, T>::type;
-        return ViewType(vector.data(), vector.size());
+        return typename EquivalentView<ExecutionSpace, T>::type(vector.data(), vector.size());
     }
 
     //// Specialization for Eigen matrix
@@ -376,15 +375,15 @@ constexpr auto match_input_data_param_helper(const KernelsTuple& algorithm_kerne
     auto& this_kernel     = std::get<I>(algorithm_kernels);
     auto& this_data       = std::get<J>(this_kernel.data_params_);
     auto& compared_kernel = std::get<K>(algorithm_kernels);
-    
+
     static_assert(IsTag<decltype(this_data)>);
 
     return std::make_tuple(
       [&](auto& compared_data) -> std::size_t
       {
           static_assert(IsTag<decltype(compared_data)>);
-          if (this_data.id_ == compared_data.id_ &&
-              std::is_const_v<decltype(compared_data)>)
+          if constexpr (this_data.id == compared_data.id &&
+                        std::is_const_v<decltype(compared_data)>)
           {
               return L;
           }
@@ -683,13 +682,23 @@ int main(int argc, char* argv[])
     std::vector<double> w(N);
 
     // use tag to label data params with unique IDs
-    Tag X(x), Y(y), Z(z), W(w);
+    auto X = make_tag(x);
+    auto Y = make_tag(y);
+    auto Z = make_tag(z);
+    auto W = make_tag(w);
 
     { // Some static assertions to make sure I understand the types
-        auto view_of_tag = Views<Kokkos::Serial>::create_view(std::as_const(X));
+        static_assert(!std::is_const_v<EquivalentView<Kokkos::Serial, decltype(X)>::value_type>);
         static_assert(
-          std::is_same_v<decltype(view_of_tag),
-                         EquivalentView<Kokkos::Serial, decltype(std::as_const(X))>::type>);
+          std::is_const_v<EquivalentView<Kokkos::Serial, decltype(std::as_const(X))>::value_type>);
+
+        static_assert(
+          std::is_same_v<decltype(Views<Kokkos::Serial>::create_view(std::as_const(X))),
+                         EquivalentView<Kokkos::Serial, std::add_const_t<decltype(x)>>::type>);
+
+        static_assert(
+          std::is_same_v<decltype(Views<Kokkos::Serial>::create_view(X)),
+                         EquivalentView<Kokkos::Serial, decltype(x)>::type>);
 
         auto args = pack(std::as_const(X), Y);
         static_assert(
@@ -732,7 +741,7 @@ int main(int argc, char* argv[])
 
     // Create an Algorithm object
     Algorithm algo(pack(k1, k2));
-    
+
     constexpr auto match = match_input_data_param<0, 0, 0>(algo.kernels_);
 
 
