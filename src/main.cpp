@@ -6,6 +6,8 @@
 
 #include "Kokkos_Core.hpp"
 
+#include "CompileTimeCounter.h"
+
 #include <algorithm>
 #include <numeric>
 #include <tuple>
@@ -86,11 +88,14 @@ struct Tag
     };
 };
 
-template<typename T>
-auto make_tag(T& v)
+template<int ID, typename T>
+constexpr auto make_tag(T& v)
 {
-    return Tag<__COUNTER__, T>({ v });
+    return Tag<ID, T>({ v });
 }
+
+#define TAG(x) make_tag<__COUNTER__>(x);
+
 
 template<typename T>
 concept IsTag = std::is_same_v<typename std::decay_t<T>::is_tag, std::true_type>;
@@ -121,7 +126,7 @@ struct EquivalentView<ExecutionSpace, T>
 {
     using underlying_view_type = std::conditional_t<
       std::is_const_v<std::remove_reference_t<T>>,
-      EquivalentView<ExecutionSpace, std::add_const_t<std::decay_t<T>::value_type>>,
+      EquivalentView<ExecutionSpace, std::add_const_t<typename std::decay_t<T>::value_type>>,
       EquivalentView<ExecutionSpace, typename std::decay_t<T>::value_type>>;
 
     // Type of the scalar in the data structure
@@ -160,7 +165,7 @@ struct Views
         requires IsTag<T> && IsStdVector<T>
     static auto create_view(T& tag)
     {
-        return typename EquivalentView<ExecutionSpace, T>::type(vector.data(), vector.size());
+        return typename EquivalentView<ExecutionSpace, T>::type(tag.v_.data(), tag.v_.size());
     }
 
     // Specialization for std::vector (default allocator)
@@ -663,8 +668,6 @@ struct ct_map<default_value, kv<k, v>, rest...>
     };
 };
 
-
-
 int main(int argc, char* argv[])
 {
     int N;
@@ -682,10 +685,10 @@ int main(int argc, char* argv[])
     std::vector<double> w(N);
 
     // use tag to label data params with unique IDs
-    auto X = make_tag(x);
-    auto Y = make_tag(y);
-    auto Z = make_tag(z);
-    auto W = make_tag(w);
+    auto X = TAG(x);
+    auto Y = TAG(y);
+    auto Z = TAG(z);
+    auto W = TAG(w);
 
     { // Some static assertions to make sure I understand the types
         static_assert(!std::is_const_v<EquivalentView<Kokkos::Serial, decltype(X)>::value_type>);
@@ -696,9 +699,8 @@ int main(int argc, char* argv[])
           std::is_same_v<decltype(Views<Kokkos::Serial>::create_view(std::as_const(X))),
                          EquivalentView<Kokkos::Serial, std::add_const_t<decltype(x)>>::type>);
 
-        static_assert(
-          std::is_same_v<decltype(Views<Kokkos::Serial>::create_view(X)),
-                         EquivalentView<Kokkos::Serial, decltype(x)>::type>);
+        static_assert(std::is_same_v<decltype(Views<Kokkos::Serial>::create_view(X)),
+                                     EquivalentView<Kokkos::Serial, decltype(x)>::type>);
 
         auto args = pack(std::as_const(X), Y);
         static_assert(
@@ -739,10 +741,19 @@ int main(int argc, char* argv[])
     // auto kernels = pack(k1, k2);
     // auto kernel_graph = create_kernel_info_tuple(kernels);
 
+
     // Create an Algorithm object
     Algorithm algo(pack(k1, k2));
 
-    constexpr auto match = match_input_data_param<0, 0, 0>(algo.kernels_);
+    // k1.data_params[0] should match k2.data_params[0]
+    static_assert(std::is_same_v<std::decay_t<std::tuple_element_t<0, decltype(k1.data_params_)>>,
+                                 std::decay_t<std::tuple_element_t<0, decltype(k2.data_params_)>>>);
+
+    // k1.data_params[0] should not match k2.data_params[1]
+    static_assert(
+      !std::is_same_v<std::decay_t<std::tuple_element_t<0, decltype(k1.data_params_)>>,
+                      std::decay_t<std::tuple_element_t<1, decltype(k2.data_params_)>>>);
+
 
 
 
