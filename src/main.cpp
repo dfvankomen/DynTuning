@@ -13,12 +13,12 @@
 #include <vector>
 
 #ifdef USE_EIGEN
-  #include "Eigen"
+#include "Eigen"
 #endif
 
 #define NDEBUG
 #ifdef NDEBUG
-  #include <iostream>
+#include <iostream>
 #endif
 
 #ifndef KOKKOS_HOST
@@ -63,8 +63,10 @@ concept NotConst = not std::is_const_v<std::remove_reference_t<T>>;
 
 // utility function for iterating over a tuple of unknown length
 template<typename LambdaType, std::size_t I = 0, typename... T>
-inline typename std::enable_if<I == sizeof...(T), void>::type iter_tuple(
-    const std::tuple<T...>& t, const LambdaType& lambda) {}
+inline typename std::enable_if<I == sizeof...(T), void>::type iter_tuple(const std::tuple<T...>& t,
+                                                                         const LambdaType& lambda)
+{
+}
 template<typename LambdaType, std::size_t I = 0, typename... T>
   inline typename std::enable_if <
   I<sizeof...(T), void>::type iter_tuple(const std::tuple<T...>& t, const LambdaType& lambda)
@@ -91,7 +93,7 @@ concept IsStdVector = is_specialization<std::decay_t<T>, std::vector>;
 
 #ifdef USE_EIGEN
 template<typename T>
-concept IsEigenMatrix = std::is_base_of_v<Eigen::MatrixBase<std::decay_t<T> >, std::decay_t<T> >;
+concept IsEigenMatrix = std::is_base_of_v<Eigen::MatrixBase<std::decay_t<T>>, std::decay_t<T>>;
 #endif
 
 //=============================================================================
@@ -229,7 +231,7 @@ struct Views
         return typename EquivalentView<ExecutionSpace, T>::type(vector.data(), vector.size());
     }
 
-    #ifdef USE_EIGEN
+#ifdef USE_EIGEN
     // Specialization for Eigen matrix
     template<typename T>
         requires IsEigenMatrix<T>
@@ -238,7 +240,7 @@ struct Views
         using ViewType = typename EquivalentView<ExecutionSpace, T>::type;
         return ViewType(matrix.data(), matrix.rows(), matrix.cols());
     }
-    #endif
+#endif
 
     // Creates view for a given execution space for a variadic list of data structures
     // (each needs a create_view specialization)
@@ -435,41 +437,86 @@ struct DataParamRef
 {
     std::size_t kernel_index;
     std::size_t data_param_index;
+
+    constexpr bool operator==(const DataParamRef& other)
+    {
+        return this->kernel_index == other.kernel_index &&
+               this->data_param_index == other.data_param_index;
+    }
 };
 
 // Helper function to find the smallest value in a tuple
-template<std::size_t I = 0, typename... Ts>
-constexpr auto min_value_in_tuple(const std::tuple<Ts...>& tuple,
-                                  std::size_t current_min = std::numeric_limits<std::size_t>::max())
+template<std::size_t I, typename DataParamRefTuple>
+constexpr auto find_min_L_impl(const DataParamRefTuple& tuple,
+                               DataParamRef current_min = {
+                                 std::numeric_limits<std::size_t>::max(),
+                                 std::numeric_limits<std::size_t>::max() })
 {
-    if constexpr (I == sizeof...(Ts))
+    if constexpr (I == std::tuple_size_v<DataParamRefTuple>)
     {
         return current_min;
     }
     else
     {
         const auto current_value = std::get<I>(tuple);
-        return min_value_in_tuple<I + 1>(tuple, std::min(current_min, current_value));
+        const auto min_value     = current_value.data_param_index < current_min.data_param_index
+                                     ? current_value
+                                     : current_min;
+        return find_min_L_impl<I + 1>(tuple, min_value);
     }
 }
 
+template<typename DataParamRefTuple>
+constexpr DataParamRef find_min_L(const DataParamRefTuple& tuple)
+{
+    return find_min_L_impl<0>(tuple);
+}
+
+template<std::size_t I, typename DataParamRefTuple>
+constexpr auto find_max_K_impl(const DataParamRefTuple& tuple,
+                               DataParamRef current_max = {
+                                 std::numeric_limits<std::size_t>::min(),
+                                 std::numeric_limits<std::size_t>::min() })
+{
+    if constexpr (I == std::tuple_size_v<DataParamRefTuple>)
+    {
+        return current_max;
+    }
+    else
+    {
+        const auto current_value = std::get<I>(tuple);
+        const auto max_value =
+          current_value.kernel_index > current_value.kernel_index &&
+              current_value.data_param_index != std::numeric_limits<std::size_t>::min()
+            ? current_value
+            : current_value;
+        return find_max_K_impl<I + 1>(tuple, max_value);
+    }
+}
+
+template<typename DataParamRefTuple>
+constexpr DataParamRef find_max_K(const DataParamRefTuple& tuple)
+{
+    return find_max_K_impl<0>(tuple);
+}
+
 template<typename KernelsTuple, std::size_t I, std::size_t J, std::size_t K, std::size_t... L>
-constexpr auto match_input_data_param_helper(std::integer_sequence<std::size_t, L...>)
+constexpr auto match_input_IJK_over_L(std::integer_sequence<std::size_t, L...>)
 {
     using this_kernel_data_tuple = std::decay_t<std::tuple_element_t<I, KernelsTuple>>::DataTuple;
     using compared_kernel_data_tuple =
       std::decay_t<std::tuple_element_t<K, KernelsTuple>>::DataTuple;
 
     return std::make_tuple(
-      [&]() -> std::size_t
+      [&]() -> DataParamRef
       {
           if constexpr (DoTagsMatch<this_kernel_data_tuple, J, compared_kernel_data_tuple, L>)
           {
-              return L;
+              return { K, L };
           }
           else
           {
-              return std::numeric_limits<std::size_t>::max();
+              return { K, std::numeric_limits<std::size_t>::max() };
           }
       }()...);
 }
@@ -477,23 +524,38 @@ constexpr auto match_input_data_param_helper(std::integer_sequence<std::size_t, 
 // I - index of kernel in KernelsTuple
 // J - data parameter index in the Ith kernel
 // K - index of another kernel in KernelsTuple to search its data
-template<std::size_t I, std::size_t J, std::size_t K, typename KernelsTuple>
-constexpr std::size_t match_input_data_param(const KernelsTuple& algorithm_kernels)
+template<typename KernelsTuple, std::size_t I, std::size_t J, std::size_t... K>
+constexpr auto match_input_IJ_over_K(std::integer_sequence<std::size_t, K...>)
 {
-    static_assert(std::is_const_v<std::remove_reference_t<decltype(std::get<J>(
-                    std::get<I>(algorithm_kernels).data_params_))>>,
-                  "kernel[I].data[J] is not an input (it is not const)");
+    // static_assert(std::is_const_v<std::remove_reference_t<decltype(std::get<J>(
+    //                 std::get<I>(algorithm_kernels).data_params_))>>,
+    //              "kernel[I].data[J] is not an input (it is not const)");
 
     using this_kernel_data_tuple = std::decay_t<std::tuple_element_t<I, KernelsTuple>>::DataTuple;
-    using compared_kernel_data_tuple =
-      std::decay_t<std::tuple_element_t<K, KernelsTuple>>::DataTuple;
 
     // Loop over the data parameters in kernel[K] and look for a match to kernel[I]->data[J]
     // that is also not const (an output)
-    auto matches = match_input_data_param_helper<KernelsTuple, I, J, K>(
-      std::make_index_sequence<std::tuple_size_v<this_kernel_data_tuple>> {});
+    return std::make_tuple(find_min_L(match_input_IJK_over_L<KernelsTuple, I, J, K>(
+      std::make_index_sequence<std::tuple_size_v<this_kernel_data_tuple>> {}))...);
+}
 
-    return min_value_in_tuple(matches);
+template<typename KernelsTuple, std::size_t I, std::size_t... J>
+constexpr auto match_input_I_over_J(std::integer_sequence<std::size_t, J...>)
+{
+    using this_kernel_data_tuple = std::decay_t<std::tuple_element_t<I, KernelsTuple>>::DataTuple;
+
+    return std::make_tuple(
+      find_max_K(match_input_IJ_over_K<KernelsTuple, I, J>(std::make_index_sequence<I> {}))...);
+}
+
+
+template<typename KernelsTuple, std::size_t I>
+constexpr auto match_input()
+{
+    using this_kernel_data_tuple = std::decay_t<std::tuple_element_t<I, KernelsTuple>>::DataTuple;
+
+    return match_input_I_over_J<KernelsTuple, I>(
+      std::make_index_sequence<std::tuple_size_v<this_kernel_data_tuple>> {});
 }
 
 // Find dependencies for a single
@@ -534,7 +596,7 @@ struct DataGraphNode
       tuple<std::tuple<DataParamRef>, std::tuple<DataParamRef>, std::tuple<DataParamRef>>
         output_dependencies_;
 };
-    
+
 /*
 // utility function to check for a data dependency
 template <typename TagTypeI, typename TagTypeJ>
@@ -609,13 +671,13 @@ class Algorithm
     // constructor should initialize and empty vector
     constexpr Algorithm(std::tuple<KernelTypes&...> kernels)
       : kernels_(kernels)
-      {
-        #ifdef NDEBUG
-            iter_tuple(kernels_, []<typename KernelType>(KernelType& kernel) {
-                printf("Registered Kernel: %s\n", kernel.kernel_name_.c_str());
-            });
-        #endif
-      };
+    {
+#ifdef NDEBUG
+        iter_tuple(kernels_,
+                   []<typename KernelType>(KernelType& kernel)
+                   { printf("Registered Kernel: %s\n", kernel.kernel_name_.c_str()); });
+#endif
+    };
     ~Algorithm() {};
 
     // the core of this class is a tuple of kernels
@@ -624,13 +686,8 @@ class Algorithm
     // call all kernels
     void call()
     {
-        iter_tuple(
-            kernels_,
-            []<typename KernelType>(KernelType& kernel)
-            {
-                TIMING(kernel, kernel.call());
-            }
-        );
+        iter_tuple(kernels_,
+                   []<typename KernelType>(KernelType& kernel) { TIMING(kernel, kernel.call()); });
     };
 };
 
@@ -720,15 +777,28 @@ int main(int argc, char* argv[])
     // Create an Algorithm object
     Algorithm algo(pack(k1, k2));
 
-    static_assert(match_input_data_param<0, 0, 1>(algo.kernels_) == 0);
-    static_assert(match_input_data_param<0, 1, 1>(algo.kernels_) == std::numeric_limits<std::size_t>::max());
-    static_assert(match_input_data_param<1, 1, 0>(algo.kernels_) == 2);
+    /*
+    static_assert(match_input_IJK_over_L<decltype(algo.kernels_), 0, 0, 1>(
+                    std::make_index_sequence<3> {}) == 0);
+    static_assert(match_input_IJK_over_L<decltype(algo.kernels_), 0, 1, 1>(
+                    std::make_index_sequence<3> {}) == std::numeric_limits<std::size_t>::max());
+    static_assert(match_input_IJK_over_L<decltype(algo.kernels_), 1, 1, 0>(
+                    std::make_index_sequence<3> {}) == 2);
+                    */
+
 
     // k1.data_params[0] should match k2.data_params[0]
     static_assert(DoTagsMatch<decltype(k1.data_params_), 0, decltype(k2.data_params_), 0>);
 
     // k1.data_params[0] should not match k2.data_params[1]
     static_assert(!DoTagsMatch<decltype(k1.data_params_), 0, decltype(k2.data_params_), 1>);
+
+    // Note: It finds the matches! But it is not currently checking that {0, 2} is not const
+    constexpr auto result = match_input<decltype(algo.kernels_), 1>();
+    static_assert(std::get<0>(result) == DataParamRef({ 0, 0 }));
+    static_assert(std::get<1>(result) == DataParamRef({ 0, 2 }));
+    static_assert(std::get<2>(result) == DataParamRef({ std::numeric_limits<std::size_t>::max(),
+                                                        std::numeric_limits<std::size_t>::max() }));
 
 
 
