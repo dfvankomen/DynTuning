@@ -4,7 +4,6 @@
 // * Inputs and outputs are all ndarrays at the element level
 //
 
-#include "CompileTimeCounter.h"
 #include "Kokkos_Core.hpp"
 
 #include <algorithm>
@@ -54,11 +53,13 @@ auto pack(ParameterTypes&... params)
     return std::make_tuple(std::ref(params)...);
 }
 
+/*
 template<typename T>
 concept IsConst = std::is_const_v<std::remove_reference_t<T>>;
 
 template<typename T>
 concept NotConst = not std::is_const_v<std::remove_reference_t<T>>;
+*/
 
 
 // utility function for iterating over a tuple of unknown length
@@ -97,49 +98,6 @@ concept IsEigenMatrix = std::is_base_of_v<Eigen::MatrixBase<std::decay_t<T>>, st
 #endif
 
 //=============================================================================
-// Tag
-//=============================================================================
-
-// Note:
-//   The issue now is that id_ is still a "runtime value", i.e. on the stack, since the class is not
-//   instantiated until runtime in this case.  Instead, we need to make it part of the template
-//   parameters.
-//
-// lightweight wrapper class to tag an object with a unique identifier
-template<int TagID, typename T>
-struct Tag
-{
-    using is_tag     = std::true_type;
-    using value_type = T; // Type of underlying data
-
-    std::remove_reference_t<T>& v_;
-
-    static constexpr int id = TagID;
-
-    operator T&()
-    {
-        return v_;
-    };
-};
-
-template<int ID, typename T>
-constexpr auto make_tag(T& v)
-{
-    return Tag<ID, T>({ v });
-}
-
-#define TAG(x) make_tag<__COUNTER__>(x);
-
-template<typename T>
-concept IsTag = std::is_same_v<typename std::decay_t<T>::is_tag, std::true_type>;
-
-/// Checks if the Ith tag of DataTuple1 matches the Jth tag of DataTuple2
-template<typename DataTuple1, int I, typename DataTuple2, int J>
-concept DoTagsMatch = std::is_same_v<std::decay_t<std::tuple_element_t<I, DataTuple1>>,
-                                     std::decay_t<std::tuple_element_t<J, DataTuple2>>>;
-
-
-//=============================================================================
 // EquivalentView
 //=============================================================================
 
@@ -161,22 +119,6 @@ struct EquivalentView<ExecutionSpace, T>
     using type = Kokkos::View<value_type*,
                               typename ExecutionSpace::array_layout,
                               typename ExecutionSpace::memory_space>;
-};
-
-template<typename ExecutionSpace, typename T>
-    requires IsTag<T>
-struct EquivalentView<ExecutionSpace, T>
-{
-    using underlying_view_type = std::conditional_t<
-      std::is_const_v<std::remove_reference_t<T>>,
-      EquivalentView<ExecutionSpace, std::add_const_t<typename std::decay_t<T>::value_type>>,
-      EquivalentView<ExecutionSpace, typename std::decay_t<T>::value_type>>;
-
-    // Type of the scalar in the data structure
-    using value_type = typename underlying_view_type::value_type;
-
-    // Type for the equivalent view of the data structure
-    using type = typename underlying_view_type::type;
 };
 
 #ifdef USE_EIGEN
@@ -214,14 +156,6 @@ struct Views
     // (each structure needs a specialization)
     template<typename T>
     static typename EquivalentView<ExecutionSpace, T>::type create_view(T&);
-
-    // Specialization for Tag, which will call create_view for underlying type
-    template<typename T>
-        requires IsTag<T> // of vector!!! TODO fix
-    static auto create_view(T& tag)
-    {
-        return typename EquivalentView<ExecutionSpace, T>::type(tag.v_.data(), tag.v_.size());
-    }
 
     // Specialization for std::vector (default allocator)
     template<typename T>
@@ -420,6 +354,7 @@ class Kernel
 // Data Graph
 //=============================================================================
 
+/*
 // Source: https://www.fluentcpp.com/2021/03/05/stdindex_sequence-and-its-improvement-in-c20/
 template<class Tuple, class F>
 constexpr decltype(auto) for_each_tuple_w_index(Tuple&& tuple, F&& f)
@@ -452,7 +387,7 @@ constexpr auto find_min_L_impl(const DataParamRefTuple& tuple,
                                  std::numeric_limits<std::size_t>::max(),
                                  std::numeric_limits<std::size_t>::max() })
 {
-    if constexpr (I == std::tuple_size_v<DataParamRefTuple>)
+    if constexpr (I == std::tuple_size_v<DataParamRefTuple>n
     {
         return current_min;
     }
@@ -574,93 +509,112 @@ constexpr std::tuple<DataParamRef> find_input_depencies(const KernelsTuple& algo
     // for_each(algorithm_kernels, []())
 }
 
-// Serves as a "node" in the data/kernel dependency graph
-template<typename KernelsTuple, std::size_t I>
-struct DataGraphNode
-{
-    constexpr DataGraphNode(const KernelsTuple& algorithm_kernels)
-      : kernel_(std::get<I>(algorithm_kernels))
-    {
-    }
-
-    // The kernel that this node refers to in the chain of kernels
-    static constexpr std::tuple_element<I, KernelsTuple>::type& kernel_;
-    // For each input data parameter for the corresponding kernel (I in the KernelsTuple), this
-    // indicates the upstream kernel index that outputs the data parameter needed by this kernel
-    // along with the index of the data parameter in that upstream kernel.
-    static constexpr std::tuple<DataParamRef, DataParamRef, DataParamRef> input_dependencies_;
-    // For each output data parameter for the corresponding kernel (I in the KernelsTuple), this
-    // indicates the downstream kernel indices that need the data parameter as an input along
-    // with the index of the data parameter in those downstream kernels.
-    static constexpr std::
-      tuple<std::tuple<DataParamRef>, std::tuple<DataParamRef>, std::tuple<DataParamRef>>
-        output_dependencies_;
-};
-
-/*
-// utility function to check for a data dependency
-template <typename TagTypeI, typename TagTypeJ>
-constexpr bool is_dependent(TagTypeI& tag1, TagTypeJ& tag2) {
-    // ID match and former is not const but latter is const
-    if constexpr ((tag1::id == tag2::id) && (!std::is_const(tag1)) && (std::is_const(tag2))) {
-        return true;
-    } else {
-        return false;
-    }
-}
-// Data params loop over J
-template <std::size_t I, std::size_t J, typename KernelTypeI, typename KernelTypeJ>
-constexpr void compare_data_params_IJ(KernelTypeI& k1, KernelTypeJ& k2) {
-    if constexpr (is_dependent(std::get<I>(k1), std::get<J>(k2))) {
-        // set up a copy operation for kernel k1 to copy to the device of k2
-    }
-    if constexpr (J == 0)
-        return;
-    else
-        compare_data_params_IJ<I,J-1>(k1, k2);
-}
-// Data params loop over I
-template <std::size_t I, typename KernelTypeI, typename KernelTypeJ>
-constexpr void compare_data_params_I(KernelTypeI& k1, KernelTypeJ& k2) {
-    compare_data_params_IJ<I,std::tuple_size_v<decltype(k2.data_params_)> - 1>(k1, k2);
-    if constexpr (I == 0)
-        return;
-    else
-      compare_data_params_I<I-1>(k1, k2);
-}
-// Init comparison of data params
-template <typename KernelTypeI, typename KernelTypeJ>
-constexpr void compare_data_params(KernelTypeI& k1, KernelTypeJ& k2) {
-    compare_data_params_I<std::tuple_size_v<decltype(k1.data_params_)> - 1>(k1, k2);
-}
-// Kernels loop over I
-template <std::size_t I, std::size_t J, typename... KernelsTuple>
-constexpr void compare_kernels_IJ(const std::tuple<KernelsTuple...>& kernels) {
-    compare_data_params(std::get<I>(kernels), std::get<J>(kernels));
-    if constexpr (I == 0)
-        return;
-    else
-        compare_kernels_IJ<I-1,J>(kernels);
-}
-// Kernels loop over J
-template <std::size_t J, typename... KernelsTuple>
-constexpr void compare_kernels_J(const std::tuple<KernelsTuple...>& kernels) {
-    compare_kernels_IJ<J-1,J>(kernels);
-    if constexpr (J == 0)
-        return;
-    else
-        compare_kernels_J<J-1>(kernels);
-}
-// Init comparison of kernels
-template <typename... KernelsTuple>
-constexpr void deduce_dependencies(const std::tuple<KernelsTuple...>& kernels) {
-    compare_kernels_J<std::tuple_size_v<decltype(kernels)> - 1>(kernels);
-}
 */
 
 //=============================================================================
 // Algorithm
 //=============================================================================
+
+/*
+// Serves as a "node" in the data/kernel dependency graph
+struct DataGraphNode
+{
+    DataGraphNode(const size_t I)
+      : kernel_id(I)
+    {
+    }
+
+    // The kernel that this node refers to in the chain of kernels
+    const size_t I;
+
+    // For each input data parameter for the corresponding kernel, this
+    // indicates the upstream kernel index that outputs the data parameter needed by this kernel
+    // along with the index of the data parameter in that upstream kernel.
+    std::vector<std::tuple<size_t, size_t, size_t>> inputs = {};
+    
+    // For each output data parameter for the corresponding kernel, this
+    // indicates the downstream kernel indices that need the data parameter as an input along
+    // with the index of the data parameter in those downstream kernels.
+    std::vector<std::tuple<size_t, size_t, size_t>> outputs = {};
+
+};
+*/
+
+// build the DataGraph from chain of Kernels
+template<typename TupleType>
+auto build_data_graph (TupleType& kernels)
+{
+  size_t n_kernels = std::tuple_size_v<decltype(kernels)>;
+
+  using index_pair = std::tuple<size_t, size_t>;
+  using index_map  = std::map<index_pair, index_pair>;
+  size_t null_v    = std::numeric_limits<std::size_t>::max();
+
+  // create an empty inputs and outputs for each
+  index_map inputs;
+  index_map outputs;
+
+  // left kernel
+  for (size_t il = 0; il < n_kernels; il++) {
+    auto& kernel_l         = std::get<il>(kernels);
+    auto& data_params_l    = kernel_l.data_params_;
+    size_t n_data_params_l = std::tuple_size_v<decltype(data_params_l)>;
+    
+    // left data param
+    for (size_t jl = 0; jl < n_data_params_l; jl++) {
+      auto& data_param_l = std::get<jl>(data_params_l);
+      bool is_const_l    = std::is_const_v<std::remove_reference_t<decltype(data_param_l)>>;
+
+      // right kernel
+      bool is_match = false;
+      for (size_t ir = il+1; ir < n_kernels; ir++) {
+        auto& kernel_r         = std::get<ir>(kernels);
+        auto& data_params_r    = kernel_r.data_params_;
+        size_t n_data_params_r = std::tuple_size_v<decltype(data_params_r)>;
+
+        // right data param
+        for (size_t jr = 0; jr < n_data_params_r; jr++) {
+          auto& data_param_r = std::get<jr>(data_params_r);
+          bool is_const_r    = std::is_const_v<std::remove_reference_t<decltype(data_param_r)>>;
+
+          // match
+          if ((&data_param_l == &data_param_r) && (!is_const_l) && (is_const_r)) {
+            outputs.emplace(std::make_tuple(il,jl), std::make_tuple(ir,jr));
+            inputs.emplace(std::make_tuple(ir,jr), std::make_tuple(il,jl));
+            is_match = true;
+            break;
+          }
+        } // end jr
+
+        // found a match for this data param
+        if (is_match)
+          break;
+      
+      } // end ir
+
+      // found a match for this data param
+      if (is_match)
+        break;
+
+      // if entry wasn't added yet, map it to null
+      if (is_const_l) { //input
+        inputs.emplace(std::make_tuple(il,jl), std::make_tuple(null_v, null_v));
+      } else { // output
+        outputs.emplace(std::make_tuple(il,jl), std::make_tuple(null_v, null_v));
+      }
+
+    } // end jl
+  } // end il
+
+  // now we have maps of all data param connections!
+  // next, loop over kernels and make a node for each kernel
+  //   how to determine number of inputs and outputs for each kernel?
+  //   should I have counted them?
+  //   or should we just use vectors?
+
+  // should outputs will null destinations be automatically copied back to the host?
+
+}
 
 // main algorithm object
 
@@ -672,11 +626,11 @@ class Algorithm
     constexpr Algorithm(std::tuple<KernelTypes&...> kernels)
       : kernels_(kernels)
     {
-#ifdef NDEBUG
-        iter_tuple(kernels_,
-                   []<typename KernelType>(KernelType& kernel)
-                   { printf("Registered Kernel: %s\n", kernel.kernel_name_.c_str()); });
-#endif
+      #ifdef NDEBUG
+        iter_tuple(kernels_, []<typename KernelType>(KernelType& kernel) {
+          printf("Registered Kernel: %s\n", kernel.kernel_name_.c_str());
+        });
+      #endif
     };
     ~Algorithm() {};
 
@@ -686,8 +640,9 @@ class Algorithm
     // call all kernels
     void call()
     {
-        iter_tuple(kernels_,
-                   []<typename KernelType>(KernelType& kernel) { TIMING(kernel, kernel.call()); });
+      iter_tuple(kernels_, []<typename KernelType>(KernelType& kernel) {
+        TIMING(kernel, kernel.call());
+      });
     };
 };
 
@@ -712,42 +667,9 @@ int main(int argc, char* argv[])
     std::vector<double> z(N);
     std::vector<double> w(N);
 
-    // use tag to label data params with unique IDs
-    auto X = TAG(x);
-    auto Y = TAG(y);
-    auto Z = TAG(z);
-    auto W = TAG(w);
-
-    { // Some static assertions to make sure I understand the types
-        static_assert(IsTag<decltype(X)>);
-        static_assert(IsTag<decltype(std::as_const(X))>);
-        static_assert(!IsTag<decltype(x)>);
-
-        static_assert(!std::is_const_v<EquivalentView<Kokkos::Serial, decltype(X)>::value_type>);
-        static_assert(
-          std::is_const_v<EquivalentView<Kokkos::Serial, decltype(std::as_const(X))>::value_type>);
-
-        static_assert(
-          std::is_same_v<decltype(Views<Kokkos::Serial>::create_view(std::as_const(X))),
-                         EquivalentView<Kokkos::Serial, std::add_const_t<decltype(x)>>::type>);
-
-        static_assert(std::is_same_v<decltype(Views<Kokkos::Serial>::create_view(X)),
-                                     EquivalentView<Kokkos::Serial, decltype(x)>::type>);
-
-        auto args = pack(std::as_const(X), Y);
-        static_assert(
-          std::is_same_v<decltype(args), std::tuple<decltype(std::as_const(X))&, decltype(Y)&>>);
-
-        auto views = Views<Kokkos::Serial>::create_views_from_tuple(args);
-        static_assert(std::is_same_v<
-                      decltype(views),
-                      std::tuple<EquivalentView<Kokkos::Serial, decltype(std::as_const(X))>::type,
-                                 EquivalentView<Kokkos::Serial, decltype(Y)>::type>>);
-    }
-
     Kernel k1(
       "1D vector-vector multiply",
-      pack(std::as_const(X), std::as_const(Y), Z),
+      pack(std::as_const(x), std::as_const(y), z),
       []<typename ViewsTuple, typename Index>(ViewsTuple& views, const Index& i)
       {
           auto& x = std::get<0>(views);
@@ -759,7 +681,7 @@ int main(int argc, char* argv[])
 
     Kernel k2(
       "1D vector-vector multiply",
-      pack(std::as_const(X), std::as_const(Z), W),
+      pack(std::as_const(x), std::as_const(z), w),
       []<typename ViewsTuple, typename Index>(ViewsTuple& views, const Index& i)
       {
           auto& x = std::get<0>(views);
@@ -769,38 +691,8 @@ int main(int argc, char* argv[])
       },
       range_extent(0, w.size()));
 
-    ////auto kernels = create_tuple_of_references(k1, k2);
-    // auto kernels = pack(k1, k2);
-    // auto kernel_graph = create_kernel_info_tuple(kernels);
-
-
     // Create an Algorithm object
     Algorithm algo(pack(k1, k2));
-
-    /*
-    static_assert(match_input_IJK_over_L<decltype(algo.kernels_), 0, 0, 1>(
-                    std::make_index_sequence<3> {}) == 0);
-    static_assert(match_input_IJK_over_L<decltype(algo.kernels_), 0, 1, 1>(
-                    std::make_index_sequence<3> {}) == std::numeric_limits<std::size_t>::max());
-    static_assert(match_input_IJK_over_L<decltype(algo.kernels_), 1, 1, 0>(
-                    std::make_index_sequence<3> {}) == 2);
-                    */
-
-
-    // k1.data_params[0] should match k2.data_params[0]
-    static_assert(DoTagsMatch<decltype(k1.data_params_), 0, decltype(k2.data_params_), 0>);
-
-    // k1.data_params[0] should not match k2.data_params[1]
-    static_assert(!DoTagsMatch<decltype(k1.data_params_), 0, decltype(k2.data_params_), 1>);
-
-    // Note: It finds the matches! But it is not currently checking that {0, 2} is not const
-    constexpr auto result = match_input<decltype(algo.kernels_), 1>();
-    static_assert(std::get<0>(result) == DataParamRef({ 0, 0 }));
-    static_assert(std::get<1>(result) == DataParamRef({ 0, 2 }));
-    static_assert(std::get<2>(result) == DataParamRef({ std::numeric_limits<std::size_t>::max(),
-                                                        std::numeric_limits<std::size_t>::max() }));
-
-
 
     /*
     // matrix-vector multiply
