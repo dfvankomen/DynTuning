@@ -73,7 +73,7 @@ template<typename LambdaType, std::size_t I = 0, typename... T>
   I<sizeof...(T), void>::type iter_tuple(const std::tuple<T...>& t, const LambdaType& lambda)
 {
     auto& elem = std::get<I>(t);
-    lambda(elem);
+    lambda(I, elem);
     iter_tuple<LambdaType, I + 1, T...>(t, lambda);
 }
 
@@ -291,6 +291,11 @@ class Kernel
     {
         kernel_name_ = std::string(name);
 #ifdef NDEBUG
+
+        //bool is_const0 = std::is_const_v<std::remove_reference_t<decltype(std::get<0>(data_params_))>>;
+        //bool is_const1 = std::is_const_v<std::remove_reference_t<decltype(std::get<1>(data_params_))>>;
+        //bool is_const2 = std::is_const_v<std::remove_reference_t<decltype(std::get<2>(data_params_))>>;
+        //printf("params: %d %d %d\n", (is_const0) ? 1 : 0, (is_const1) ? 1 : 0, (is_const2) ? 1 : 0);
 
         // debugging diagnostics
         printf("\nHost Execution Space:\n");
@@ -541,60 +546,57 @@ struct DataGraphNode
 */
 
 // build the DataGraph from chain of Kernels
-template<typename TupleType>
-auto build_data_graph (TupleType& kernels)
+//template<typename TupleType>
+//auto build_data_graph (TupleType& kernels)
+template<typename... KernelTypes>
+auto build_data_graph (std::tuple<KernelTypes&...> kernels)
 {
-  size_t n_kernels = std::tuple_size_v<decltype(kernels)>;
-
   using index_pair = std::tuple<size_t, size_t>;
   using index_map  = std::map<index_pair, index_pair>;
   size_t null_v    = std::numeric_limits<std::size_t>::max();
-
+  
   // create an empty inputs and outputs for each
   index_map inputs;
   index_map outputs;
-
+    
   // left kernel
-  for (size_t il = 0; il < n_kernels; il++) {
-    auto& kernel_l         = std::get<il>(kernels);
-    auto& data_params_l    = kernel_l.data_params_;
-    size_t n_data_params_l = std::tuple_size_v<decltype(data_params_l)>;
+  iter_tuple(kernels, [&]<typename KernelTypeL>(size_t il, KernelTypeL& kernel_l) {
     
     // left data param
-    for (size_t jl = 0; jl < n_data_params_l; jl++) {
-      auto& data_param_l = std::get<jl>(data_params_l);
-      bool is_const_l    = std::is_const_v<std::remove_reference_t<decltype(data_param_l)>>;
-
+    iter_tuple(kernel_l.data_params_, [&]<typename ParamTypeL>(size_t jl, ParamTypeL& param_l) {
+      bool is_const_l = std::is_const_v<std::remove_reference_t<decltype(param_l)>>;
+    
       // right kernel
       bool is_match = false;
-      for (size_t ir = il+1; ir < n_kernels; ir++) {
-        auto& kernel_r         = std::get<ir>(kernels);
-        auto& data_params_r    = kernel_r.data_params_;
-        size_t n_data_params_r = std::tuple_size_v<decltype(data_params_r)>;
+      iter_tuple(kernels, [&]<typename KernelTypeJ>(size_t ir, KernelTypeJ& kernel_r) {
+        if (ir <= il) return;
 
         // right data param
-        for (size_t jr = 0; jr < n_data_params_r; jr++) {
-          auto& data_param_r = std::get<jr>(data_params_r);
-          bool is_const_r    = std::is_const_v<std::remove_reference_t<decltype(data_param_r)>>;
-
+        iter_tuple(kernel_r.data_params_, [&]<typename ParamTypeR>(size_t jr, ParamTypeR& param_r) {
+          bool is_const_r = std::is_const_v<std::remove_reference_t<decltype(param_r)>>;
+          //printf("(%d %d %d) (%d %d %d)\n", (int) il, (int) jl, (is_const_l) ? 1 : 0, (int) ir, (int) jr, (is_const_r) ? 1 : 0);
+          
           // match
-          if ((&data_param_l == &data_param_r) && (!is_const_l) && (is_const_r)) {
+          if ((&param_l == &param_r) && (!is_const_l) && (is_const_r)) {
+            //printf("param %d in kernel %d depends on param %d in kernel %d\n",
+            //  (int) jr, (int) ir, (int) jl, (int) il);
             outputs.emplace(std::make_tuple(il,jl), std::make_tuple(ir,jr));
             inputs.emplace(std::make_tuple(ir,jr), std::make_tuple(il,jl));
             is_match = true;
-            break;
+            return;
           }
-        } // end jr
 
+        }); // end jr
+        
         // found a match for this data param
         if (is_match)
-          break;
-      
-      } // end ir
+          return;
 
+      }); // end ir
+      
       // found a match for this data param
       if (is_match)
-        break;
+        return;
 
       // if entry wasn't added yet, map it to null
       if (is_const_l) { //input
@@ -602,10 +604,29 @@ auto build_data_graph (TupleType& kernels)
       } else { // output
         outputs.emplace(std::make_tuple(il,jl), std::make_tuple(null_v, null_v));
       }
+    
+    }); // end jl
 
-    } // end jl
-  } // end il
+  }); // end il
 
+  #ifdef NDEBUG
+    printf("\ninputs\n");
+    for (const auto& item : inputs) {
+      const auto& key = item.first;
+      const auto& value = item.second;
+      std::cout << "Key: (" << std::get<0>(key) << ", " << std::get<1>(key)
+                << "), Value: (" << std::get<0>(value) << ", " << std::get<1>(value) << ")\n";
+    }
+    printf("\noutputs\n");
+    for (const auto& item : outputs) {
+      const auto& key = item.first;
+      const auto& value = item.second;
+      std::cout << "Key: (" << std::get<0>(key) << ", " << std::get<1>(key)
+                << "), Value: (" << std::get<0>(value) << ", " << std::get<1>(value) << ")\n";
+    }
+  #endif
+
+/*
   // now we have maps of all data param connections!
   // next, loop over kernels and make a node for each kernel
   //   how to determine number of inputs and outputs for each kernel?
@@ -613,7 +634,7 @@ auto build_data_graph (TupleType& kernels)
   //   or should we just use vectors?
 
   // should outputs will null destinations be automatically copied back to the host?
-
+*/
 }
 
 // main algorithm object
@@ -627,7 +648,7 @@ class Algorithm
       : kernels_(kernels)
     {
       #ifdef NDEBUG
-        iter_tuple(kernels_, []<typename KernelType>(KernelType& kernel) {
+        iter_tuple(kernels_, []<typename KernelType>(size_t i, KernelType& kernel) {
           printf("Registered Kernel: %s\n", kernel.kernel_name_.c_str());
         });
       #endif
@@ -640,7 +661,7 @@ class Algorithm
     // call all kernels
     void call()
     {
-      iter_tuple(kernels_, []<typename KernelType>(KernelType& kernel) {
+      iter_tuple(kernels_, []<typename KernelType>(size_t i, KernelType& kernel) {
         TIMING(kernel, kernel.call());
       });
     };
@@ -666,9 +687,10 @@ int main(int argc, char* argv[])
     std::iota(y.begin(), y.end(), 0.0);
     std::vector<double> z(N);
     std::vector<double> w(N);
+    std::vector<double> q(N);
 
     Kernel k1(
-      "1D vector-vector multiply",
+      "1D vector-vector multiply 1",
       pack(std::as_const(x), std::as_const(y), z),
       []<typename ViewsTuple, typename Index>(ViewsTuple& views, const Index& i)
       {
@@ -680,7 +702,7 @@ int main(int argc, char* argv[])
       range_extent(0, z.size()));
 
     Kernel k2(
-      "1D vector-vector multiply",
+      "1D vector-vector multiply 2",
       pack(std::as_const(x), std::as_const(z), w),
       []<typename ViewsTuple, typename Index>(ViewsTuple& views, const Index& i)
       {
@@ -690,9 +712,23 @@ int main(int argc, char* argv[])
           w[i]    = x[i] * z[i];
       },
       range_extent(0, w.size()));
+    
+    Kernel k3(
+      "1D vector-vector multiply 3",
+      pack(std::as_const(x), std::as_const(z), q),
+      []<typename ViewsTuple, typename Index>(ViewsTuple& views, const Index& i)
+      {
+          auto& x = std::get<0>(views);
+          auto& z = std::get<1>(views);
+          auto& q = std::get<2>(views);
+          q[i]    = x[i] * z[i];
+      },
+      range_extent(0, q.size()));
 
     // Create an Algorithm object
-    Algorithm algo(pack(k1, k2));
+    Algorithm algo(pack(k1, k2, k3));
+        
+    build_data_graph(algo.kernels_);
 
     /*
     // matrix-vector multiply
