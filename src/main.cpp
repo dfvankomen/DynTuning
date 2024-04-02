@@ -780,8 +780,6 @@ void call_kernel_on_host(KernelType k)
     Kokkos::parallel_for(kernel_name, range_policy, kernel_wrapper);
 }
 
-void 
-
 //__host__ __device__ extended lambdas cannot be generic lambdas
 // in other words, can only use templated lambdas with one or the other
 template<typename KernelType>

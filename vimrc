@@ -19,7 +19,7 @@ let g:ale_cuda_nvcc_options .= ' -I/p/home/cander/mp/perftune/src/src'
 let g:ale_cuda_nvcc_options .= ' -I/p/home/cander/mp/perftune/src/eigen/Eigen'
 
 " lambda support
-let g:ale_cuda_nvcc_options .= ' --extended-lambdas'
+"let g:ale_cuda_nvcc_options .= ' --extended-lambdas'
 
 " start linting
 ALEEnable
