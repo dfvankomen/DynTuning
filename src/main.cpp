@@ -15,7 +15,7 @@
 #include "Eigen"
 #endif
 
-//#define NDEBUG
+// #define NDEBUG
 #ifdef NDEBUG
 #include <iostream>
 #endif
@@ -38,7 +38,11 @@
     }
 
 
-enum class DeviceSelector { HOST, DEVICE };
+enum class DeviceSelector
+{
+    HOST,
+    DEVICE
+};
 /*
 KOKKOS_FUNCTION void test_kokkos()
 {
@@ -291,13 +295,13 @@ class Kernel
     using DataTuple            = std::tuple<ParameterTypes&...>;
     using HostRangePolicy      = typename RangePolicy<KernelRank, HostExecutionSpace>::type;
     using DeviceRangePolicy    = typename RangePolicy<KernelRank, DeviceExecutionSpace>::type;
+    static constexpr int rank  = KernelRank;
 
     Kernel(const char* name,
            std::tuple<ParameterTypes&...> params,
            const LambdaType& lambda,
            const RangeExtent<KernelRank>& range_extent)
       : kernel_name_(std::string(name))
-      , kernel_rank_(KernelRank)
       , kernel_lambda_(lambda)
       , data_params_(params)
       , data_views_host_(Views<HostExecutionSpace>::create_views_from_tuple(params))
@@ -316,76 +320,59 @@ class Kernel
 #endif
     }
 
-    /*
-    //copy constructor
-    //are all these members really trivially copyable?
-    Kernel(Kernel& k)
-    {
-      kernel_name_         = k.kernel_name_;
-      kernel_rank_         = k.kernel_rank_;
-      kernel_lambda_       = k.kernel_lambda_;
-      data_params_         = k.data_params_;
-      data_views_host_     = k.data_views_host_;
-      data_views_device_   = k.data_views_device_;
-      range_lower_         = k.range_lower_;
-      range_upper_         = k.range_upper_;
-      range_policy_host_   = k.range_policy_host_;
-      range_policy_device_ = k.range_policy_device_;
-    }
-    */
-
-    //virtual void call()
+    // virtual void call()
     void operator()(DeviceSelector device_selector)
-    //virtual void call(DeviceSelector selector)
-    //void call()
+    // virtual void call(DeviceSelector selector)
+    // void call()
     {
         call_kernel(*this, device_selector);
-   
-        //test_kokkos();
+
+        // test_kokkos();
         //{
-        //  //int N = 100;
-        //  //int* a_array = new a [int];
-        //  //Kokkos::View<int*, Kokkos::Cuda> a("A", N);
-        //  Kokkos::parallel_for(
-        //    "FillA",
-        //    100,
-        //    KOKKOS_LAMBDA(const int i) {
-        //      //a(i) = i;
-        //    });
-        //}
+        //   //int N = 100;
+        //   //int* a_array = new a [int];
+        //   //Kokkos::View<int*, Kokkos::Cuda> a("A", N);
+        //   Kokkos::parallel_for(
+        //     "FillA",
+        //     100,
+        //     KOKKOS_LAMBDA(const int i) {
+        //       //a(i) = i;
+        //     });
+        // }
 
         // data movement needs to happen at the algorithm level
         //
         // Inside Kernel for the wrapper
         // TODO deep copies (somewhere)
 
-      //  if (selector == DeviceSelector::HOST) {
-      //    auto kernel_wrapper = [=, this](const auto... indices)
-      //    {
-      //        kernel_lambda_(data_views_host_, indices...);
-      //    };
+        //  if (selector == DeviceSelector::HOST) {
+        //    auto kernel_wrapper = [=, this](const auto... indices)
+        //    {
+        //        kernel_lambda_(data_views_host_, indices...);
+        //    };
 
-      //    using RangePolicyType = typename RangePolicy<KernelRank, HostExecutionSpace>::type;
-      //    auto range_policy     = RangePolicyType(lower_, upper_);
+        //    using RangePolicyType = typename RangePolicy<KernelRank, HostExecutionSpace>::type;
+        //    auto range_policy     = RangePolicyType(lower_, upper_);
 
-      //    Kokkos::parallel_for("Loop", range_policy, kernel_wrapper);
-      //  
-      //  } else if (selector == DeviceSelector::DEVICE) {
-    
-        
-          //using DataViewsType = std::tuple<typename EquivalentView<DeviceExecutionSpace, ParameterTypes>::type...>;
-
-          //LambdaType kernel_lambda = kernel_lambda_;
-          //DataViewsType data_views = data_views_device_;
+        //    Kokkos::parallel_for("Loop", range_policy, kernel_wrapper);
+        //
+        //  } else if (selector == DeviceSelector::DEVICE) {
 
 
-          //using RangePolicyType = typename RangePolicy<KernelRank, DeviceExecutionSpace>::type;
-          //auto range_policy     = RangePolicyType(lower_, upper_);
+        // using DataViewsType = std::tuple<typename EquivalentView<DeviceExecutionSpace,
+        // ParameterTypes>::type...>;
 
-          //Kokkos::parallel_for("Loop", range_policy, KOKKOS_LAMBDA(const auto... indices) {
-              //kernel_lambda(data_views, indices...);
-          //});
-      //  }
+        // LambdaType kernel_lambda = kernel_lambda_;
+        // DataViewsType data_views = data_views_device_;
+
+
+        // using RangePolicyType = typename RangePolicy<KernelRank, DeviceExecutionSpace>::type;
+        // auto range_policy     = RangePolicyType(lower_, upper_);
+
+        // Kokkos::parallel_for("Loop", range_policy, KOKKOS_LAMBDA(const auto... indices) {
+        // kernel_lambda(data_views, indices...);
+        //});
+        //  }
 
         // Note: TODO think about how to make range policy generic to work for:
         // 1) Matrix-vector operation (different range)
@@ -402,9 +389,6 @@ class Kernel
     // kernel name for debugging
     std::string kernel_name_;
 
-    // kernel rank for building range policies later
-    const int kernel_rank_;
-    
     // The kernel code that will be called in an executation on the respective views
     LambdaType kernel_lambda_;
 
@@ -605,7 +589,7 @@ struct DataGraphNode
     // indicates the upstream kernel index that outputs the data parameter needed by this kernel
     // along with the index of the data parameter in that upstream kernel.
     std::vector<std::tuple<size_t, size_t, size_t>> inputs = {};
-    
+
     // For each output data parameter for the corresponding kernel, this
     // indicates the downstream kernel indices that need the data parameter as an input along
     // with the index of the data parameter in those downstream kernels.
@@ -615,96 +599,113 @@ struct DataGraphNode
 */
 
 // build the DataGraph from chain of Kernels
-//template<typename TupleType>
-//auto build_data_graph (TupleType& kernels)
+// template<typename TupleType>
+// auto build_data_graph (TupleType& kernels)
 template<typename... KernelTypes>
-auto build_data_graph (std::tuple<KernelTypes&...> kernels)
+auto build_data_graph(std::tuple<KernelTypes&...> kernels)
 {
-  using index_pair = std::tuple<size_t, size_t>;
-  using index_map  = std::map<index_pair, index_pair>;
-  size_t null_v    = std::numeric_limits<std::size_t>::max();
-  
-  // create an empty inputs and outputs for each
-  index_map inputs;
-  index_map outputs;
-    
-  // left kernel
-  iter_tuple(kernels, [&]<typename KernelTypeL>(size_t il, KernelTypeL& kernel_l) {
-    
-    // left data param
-    iter_tuple(kernel_l.data_params_, [&]<typename ParamTypeL>(size_t jl, ParamTypeL& param_l) {
-      bool is_const_l = std::is_const_v<std::remove_reference_t<decltype(param_l)>>;
-    
-      // right kernel
-      bool is_match = false;
-      iter_tuple(kernels, [&]<typename KernelTypeJ>(size_t ir, KernelTypeJ& kernel_r) {
-        if (ir <= il) return;
+    using index_pair = std::tuple<size_t, size_t>;
+    using index_map  = std::map<index_pair, index_pair>;
+    size_t null_v    = std::numeric_limits<std::size_t>::max();
 
-        // right data param
-        iter_tuple(kernel_r.data_params_, [&]<typename ParamTypeR>(size_t jr, ParamTypeR& param_r) {
-          bool is_const_r = std::is_const_v<std::remove_reference_t<decltype(param_r)>>;
-          //printf("(%d %d %d) (%d %d %d)\n", (int) il, (int) jl, (is_const_l) ? 1 : 0, (int) ir, (int) jr, (is_const_r) ? 1 : 0);
-          
-          // match
-          if ((&param_l == &param_r) && (!is_const_l) && (is_const_r)) {
-            //printf("param %d in kernel %d depends on param %d in kernel %d\n",
-            //  (int) jr, (int) ir, (int) jl, (int) il);
-            outputs.emplace(std::make_tuple(il,jl), std::make_tuple(ir,jr));
-            inputs.emplace(std::make_tuple(ir,jr), std::make_tuple(il,jl));
-            is_match = true;
-            return;
-          }
+    // create an empty inputs and outputs for each
+    index_map inputs;
+    index_map outputs;
 
-        }); // end jr
-        
-        // found a match for this data param
-        if (is_match)
-          return;
+    // left kernel
+    iter_tuple(
+      kernels,
+      [&]<typename KernelTypeL>(size_t il, KernelTypeL& kernel_l)
+      {
+          // left data param
+          iter_tuple(
+            kernel_l.data_params_,
+            [&]<typename ParamTypeL>(size_t jl, ParamTypeL& param_l)
+            {
+                bool is_const_l = std::is_const_v<std::remove_reference_t<decltype(param_l)>>;
 
-      }); // end ir
-      
-      // found a match for this data param
-      if (is_match)
-        return;
+                // right kernel
+                bool is_match = false;
+                iter_tuple(
+                  kernels,
+                  [&]<typename KernelTypeJ>(size_t ir, KernelTypeJ& kernel_r)
+                  {
+                      if (ir <= il)
+                          return;
 
-      // if entry wasn't added yet, map it to null
-      if (is_const_l) { //input
-        inputs.emplace(std::make_tuple(il,jl), std::make_tuple(null_v, null_v));
-      } else { // output
-        outputs.emplace(std::make_tuple(il,jl), std::make_tuple(null_v, null_v));
-      }
-    
-    }); // end jl
+                      // right data param
+                      iter_tuple(
+                        kernel_r.data_params_,
+                        [&]<typename ParamTypeR>(size_t jr, ParamTypeR& param_r)
+                        {
+                            bool is_const_r =
+                              std::is_const_v<std::remove_reference_t<decltype(param_r)>>;
+                            // printf("(%d %d %d) (%d %d %d)\n", (int) il, (int) jl, (is_const_l) ?
+                            // 1 : 0, (int) ir, (int) jr, (is_const_r) ? 1 : 0);
 
-  }); // end il
+                            // match
+                            if ((&param_l == &param_r) && (!is_const_l) && (is_const_r))
+                            {
+                                // printf("param %d in kernel %d depends on param %d in kernel
+                                // %d\n",
+                                //   (int) jr, (int) ir, (int) jl, (int) il);
+                                outputs.emplace(std::make_tuple(il, jl), std::make_tuple(ir, jr));
+                                inputs.emplace(std::make_tuple(ir, jr), std::make_tuple(il, jl));
+                                is_match = true;
+                                return;
+                            }
+                        }); // end jr
 
-  #ifdef NDEBUG
+                      // found a match for this data param
+                      if (is_match)
+                          return;
+                  }); // end ir
+
+                // found a match for this data param
+                if (is_match)
+                    return;
+
+                // if entry wasn't added yet, map it to null
+                if (is_const_l)
+                { // input
+                    inputs.emplace(std::make_tuple(il, jl), std::make_tuple(null_v, null_v));
+                }
+                else
+                { // output
+                    outputs.emplace(std::make_tuple(il, jl), std::make_tuple(null_v, null_v));
+                }
+            }); // end jl
+      });       // end il
+
+#ifdef NDEBUG
     printf("\ninputs\n");
-    for (const auto& item : inputs) {
-      const auto& key = item.first;
-      const auto& value = item.second;
-      std::cout << "Key: (" << std::get<0>(key) << ", " << std::get<1>(key)
-                << "), Value: (" << std::get<0>(value) << ", " << std::get<1>(value) << ")\n";
+    for (const auto& item : inputs)
+    {
+        const auto& key   = item.first;
+        const auto& value = item.second;
+        std::cout << "Key: (" << std::get<0>(key) << ", " << std::get<1>(key) << "), Value: ("
+                  << std::get<0>(value) << ", " << std::get<1>(value) << ")\n";
     }
     printf("\noutputs\n");
-    for (const auto& item : outputs) {
-      const auto& key = item.first;
-      const auto& value = item.second;
-      std::cout << "Key: (" << std::get<0>(key) << ", " << std::get<1>(key)
-                << "), Value: (" << std::get<0>(value) << ", " << std::get<1>(value) << ")\n";
+    for (const auto& item : outputs)
+    {
+        const auto& key   = item.first;
+        const auto& value = item.second;
+        std::cout << "Key: (" << std::get<0>(key) << ", " << std::get<1>(key) << "), Value: ("
+                  << std::get<0>(value) << ", " << std::get<1>(value) << ")\n";
     }
-  #endif
+#endif
 
-/*
-  // now we have maps of all data param connections!
-  
-  // next, loop over kernels and make a node for each kernel
-  //   how to determine number of inputs and outputs for each kernel?
-  //   should I have counted them?
-  //   or should we just use vectors?
+    /*
+      // now we have maps of all data param connections!
 
-  // should outputs will null destinations be automatically copied back to the host?
-*/
+      // next, loop over kernels and make a node for each kernel
+      //   how to determine number of inputs and outputs for each kernel?
+      //   should I have counted them?
+      //   or should we just use vectors?
+
+      // should outputs will null destinations be automatically copied back to the host?
+    */
 }
 
 /*
@@ -731,11 +732,11 @@ class Algorithm
     constexpr Algorithm(std::tuple<KernelTypes&...> kernels)
       : kernels_(kernels)
     {
-      #ifdef NDEBUG
-        iter_tuple(kernels_, []<typename KernelType>(size_t i, KernelType& kernel) {
-          printf("Registered Kernel: %s\n", kernel.kernel_name_.c_str());
-        });
-      #endif
+#ifdef NDEBUG
+        iter_tuple(kernels_,
+                   []<typename KernelType>(size_t i, KernelType& kernel)
+                   { printf("Registered Kernel: %s\n", kernel.kernel_name_.c_str()); });
+#endif
     };
     ~Algorithm() {};
 
@@ -745,73 +746,50 @@ class Algorithm
     // call all kernels
     void call()
     {
-      iter_tuple(kernels_, []<typename KernelType>(size_t i, KernelType& kernel) {
-        TIMING(kernel, kernel.call());
-      });
+        iter_tuple(kernels_,
+                   []<typename KernelType>(size_t i, KernelType& kernel)
+                   { TIMING(kernel, kernel.call()); });
     };
 };
 
 
-
-template<typename KernelType>
-void call_kernel_on_host(KernelType k)
-{
-
-    auto& kernel_name   = k.kernel_name_;
-    auto& kernel_lambda = k.kernel_lambda_;
-    auto& data_views    = k.data_views_host_;
-   
-    /*
-    auto& range_lower     = k.range_lower_;
-    auto& range_upper     = k.range_upper_;
-    auto  KernelRank      = k.kernel_rank_;
-    using ExecutionSpace  = Kokkos::KOKKOS_HOST;
-    using RangePolicyType = typename RangePolicy<KernelRank, ExecutionSpace>::type;
-    auto  range_policy    = RangePolicyType(range_lower, range_upper);
-    */
-    
-    auto& range_policy = k.range_policy_host_;
-
-    auto kernel_wrapper = [=](const auto... indices)
-    {
-        kernel_lambda(data_views, indices...);
-    };
-
-    Kokkos::parallel_for(kernel_name, range_policy, kernel_wrapper);
-}
-
 //__host__ __device__ extended lambdas cannot be generic lambdas
 // in other words, can only use templated lambdas with one or the other
-template<typename KernelType>
-void call_kernel_on_device(KernelType& k)
-//void call_kernel_on_device(Kernel& k)
+template<int KernelRank, typename LambdaType, typename ViewsType, typename RangePolicyType>
+void call_kernel(const std::string& name,
+                 const LambdaType& lambda,
+                 const ViewsType& views,
+                 const RangePolicyType& range_policy)
 {
-
-   auto& kernel_name    = k.kernel_name_;
-   auto& kernel_rank    = k.kernel_rank_;
-   auto& kernel_lambda  = k.kernel_lambda_;
-   auto& data_views     = k.data_views_device_;
-   auto& range_policy   = k.range_policy_device_;
-
-   if (kernel_rank == 1) {
-       Kokkos::parallel_for(kernel_name, range_policy, KOKKOS_LAMBDA(int i) {
-         kernel_lambda(data_views, i);
-       });
-   } //else if (kernel_rank == 2) {} //etc.
-   
+    if constexpr (KernelRank == 1)
+    {
+        Kokkos::parallel_for(
+          name,
+          range_policy,
+          KOKKOS_LAMBDA(int i) { lambda(views, i); });
+    }
 }
 
 template<typename KernelType>
 void call_kernel(KernelType k, DeviceSelector device_selector)
 {
-    if (device_selector == DeviceSelector::HOST) {
-        call_kernel_on_host(k);
-    } else if (device_selector == DeviceSelector::DEVICE) {
-        call_kernel_on_device(k);
+    if (device_selector == DeviceSelector::HOST)
+    {
+        call_kernel<KernelType::rank>(k.kernel_name_,
+                                      k.kernel_lambda_,
+                                      k.data_views_host_,
+                                      k.range_policy_host_);
+    }
+    else if (device_selector == DeviceSelector::DEVICE)
+    {
+        call_kernel<KernelType::rank>(k.kernel_name_,
+                                      k.kernel_lambda_,
+                                      k.data_views_device_,
+                                      k.range_policy_device_);
     }
 }
 
-        
+
 //=============================================================================
 // Main
 //=============================================================================
@@ -827,9 +805,9 @@ int main(int argc, char* argv[])
     // Initialize Kokkos
     Kokkos::initialize(argc, argv);
 
-    //test_kokkos();
-    //Test<0, int, double> b;
-    //b.test();
+    // test_kokkos();
+    // Test<0, int, double> b;
+    // b.test();
 
     // 1D vector-vector multiply
     N = 5;
@@ -865,7 +843,7 @@ int main(int argc, char* argv[])
           w[i]    = x[i] * z[i];
       },
       range_extent(0, w.size()));
-    
+
     Kernel k3(
       "1D vector-vector multiply 3",
       pack(std::as_const(x), std::as_const(z), q),
@@ -880,7 +858,7 @@ int main(int argc, char* argv[])
 
     // Create an Algorithm object
     Algorithm algo(pack(k1, k2, k3));
-        
+
     build_data_graph(algo.kernels_);
     */
 
@@ -987,13 +965,14 @@ int main(int argc, char* argv[])
     // execute all kernels
     ////algo._deduce_dependencies();
     // algo.call();
-    //k1.call(DeviceSelector::HOST);
-    //k1.call();
+    // k1.call(DeviceSelector::HOST);
+    // k1.call();
     DeviceSelector device_selector = DeviceSelector::HOST;
     k1(device_selector);
 
     // 1D vector-vector multiply: verify the output
-    for (auto i = 0; i < y.size(); i++) {
+    for (auto i = 0; i < y.size(); i++)
+    {
         assert(x[i] * y[i] == z[i]);
     }
 
