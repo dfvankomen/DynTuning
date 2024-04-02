@@ -15,7 +15,7 @@
 #include "Eigen"
 #endif
 
-#define NDEBUG
+//#define NDEBUG
 #ifdef NDEBUG
 #include <iostream>
 #endif
@@ -37,6 +37,18 @@
         printf("%s: %.6f\n", k.name(), kernel_time); \
     }
 
+
+enum class DeviceSelector { HOST, DEVICE };
+/*
+KOKKOS_FUNCTION void test_kokkos()
+{
+  int N = 100;
+  Kokkos::View<double*, Kokkos::Cuda> a("A", N);
+  Kokkos::parallel_for("FillA", N, KOKKOS_LAMBDA(const int i) {
+    a(i) = i;
+  });
+}
+*/
 
 //=============================================================================
 // Utilities
@@ -277,51 +289,103 @@ class Kernel
     using DeviceExecutionSpace = Kokkos::KOKKOS_DEVICE;
     using BoundType            = RangeExtent<KernelRank>::value_type;
     using DataTuple            = std::tuple<ParameterTypes&...>;
+    using HostRangePolicy      = typename RangePolicy<KernelRank, HostExecutionSpace>::type;
+    using DeviceRangePolicy    = typename RangePolicy<KernelRank, DeviceExecutionSpace>::type;
 
     Kernel(const char* name,
            std::tuple<ParameterTypes&...> params,
            const LambdaType& lambda,
            const RangeExtent<KernelRank>& range_extent)
-      : data_params_(params)
+      : kernel_name_(std::string(name))
+      , kernel_rank_(KernelRank)
       , kernel_lambda_(lambda)
+      , data_params_(params)
       , data_views_host_(Views<HostExecutionSpace>::create_views_from_tuple(params))
       , data_views_device_(Views<DeviceExecutionSpace>::create_views_from_tuple(params))
-      , lower_(range_extent.lower)
-      , upper_(range_extent.upper)
+      , range_lower_(range_extent.lower)
+      , range_upper_(range_extent.upper)
+      , range_policy_host_(HostRangePolicy(range_extent.lower, range_extent.upper))
+      , range_policy_device_(DeviceRangePolicy(range_extent.lower, range_extent.upper))
     {
-        kernel_name_ = std::string(name);
 #ifdef NDEBUG
-
-        //bool is_const0 = std::is_const_v<std::remove_reference_t<decltype(std::get<0>(data_params_))>>;
-        //bool is_const1 = std::is_const_v<std::remove_reference_t<decltype(std::get<1>(data_params_))>>;
-        //bool is_const2 = std::is_const_v<std::remove_reference_t<decltype(std::get<2>(data_params_))>>;
-        //printf("params: %d %d %d\n", (is_const0) ? 1 : 0, (is_const1) ? 1 : 0, (is_const2) ? 1 : 0);
-
         // debugging diagnostics
         printf("\nHost Execution Space:\n");
         HostExecutionSpace {}.print_configuration(std::cout);
         printf("\nDevice Execution Space:\n");
         DeviceExecutionSpace {}.print_configuration(std::cout);
-
 #endif
     }
 
-    virtual void call()
+    /*
+    //copy constructor
+    //are all these members really trivially copyable?
+    Kernel(Kernel& k)
     {
+      kernel_name_         = k.kernel_name_;
+      kernel_rank_         = k.kernel_rank_;
+      kernel_lambda_       = k.kernel_lambda_;
+      data_params_         = k.data_params_;
+      data_views_host_     = k.data_views_host_;
+      data_views_device_   = k.data_views_device_;
+      range_lower_         = k.range_lower_;
+      range_upper_         = k.range_upper_;
+      range_policy_host_   = k.range_policy_host_;
+      range_policy_device_ = k.range_policy_device_;
+    }
+    */
+
+    //virtual void call()
+    void operator()(DeviceSelector device_selector)
+    //virtual void call(DeviceSelector selector)
+    //void call()
+    {
+        call_kernel(*this, device_selector);
+   
+        //test_kokkos();
+        //{
+        //  //int N = 100;
+        //  //int* a_array = new a [int];
+        //  //Kokkos::View<int*, Kokkos::Cuda> a("A", N);
+        //  Kokkos::parallel_for(
+        //    "FillA",
+        //    100,
+        //    KOKKOS_LAMBDA(const int i) {
+        //      //a(i) = i;
+        //    });
+        //}
+
         // data movement needs to happen at the algorithm level
         //
         // Inside Kernel for the wrapper
         // TODO deep copies (somewhere)
 
-        auto kernel_wrapper = [=, this](const auto... indices)
-        {
-            kernel_lambda_(data_views_host_, indices...);
-        };
+      //  if (selector == DeviceSelector::HOST) {
+      //    auto kernel_wrapper = [=, this](const auto... indices)
+      //    {
+      //        kernel_lambda_(data_views_host_, indices...);
+      //    };
 
-        using RangePolicyType = typename RangePolicy<KernelRank, HostExecutionSpace>::type;
-        auto range_policy     = RangePolicyType(lower_, upper_);
+      //    using RangePolicyType = typename RangePolicy<KernelRank, HostExecutionSpace>::type;
+      //    auto range_policy     = RangePolicyType(lower_, upper_);
 
-        Kokkos::parallel_for("Loop", range_policy, kernel_wrapper);
+      //    Kokkos::parallel_for("Loop", range_policy, kernel_wrapper);
+      //  
+      //  } else if (selector == DeviceSelector::DEVICE) {
+    
+        
+          //using DataViewsType = std::tuple<typename EquivalentView<DeviceExecutionSpace, ParameterTypes>::type...>;
+
+          //LambdaType kernel_lambda = kernel_lambda_;
+          //DataViewsType data_views = data_views_device_;
+
+
+          //using RangePolicyType = typename RangePolicy<KernelRank, DeviceExecutionSpace>::type;
+          //auto range_policy     = RangePolicyType(lower_, upper_);
+
+          //Kokkos::parallel_for("Loop", range_policy, KOKKOS_LAMBDA(const auto... indices) {
+              //kernel_lambda(data_views, indices...);
+          //});
+      //  }
 
         // Note: TODO think about how to make range policy generic to work for:
         // 1) Matrix-vector operation (different range)
@@ -338,6 +402,12 @@ class Kernel
     // kernel name for debugging
     std::string kernel_name_;
 
+    // kernel rank for building range policies later
+    const int kernel_rank_;
+    
+    // The kernel code that will be called in an executation on the respective views
+    LambdaType kernel_lambda_;
+
     // Data parameters and views thereof (in the execution spaces that will be considered)
     std::tuple<ParameterTypes&...> data_params_;
     std::tuple<typename EquivalentView<HostExecutionSpace, ParameterTypes>::type...>
@@ -345,13 +415,12 @@ class Kernel
     std::tuple<typename EquivalentView<DeviceExecutionSpace, ParameterTypes>::type...>
       data_views_device_;
 
-    // The kernel code that will be called in an executation on the respective views
-    LambdaType kernel_lambda_;
-
     // Properties pertaining to range policy
-    const BoundType lower_;
-    const BoundType upper_;
+    const BoundType range_lower_;
+    const BoundType range_upper_;
     // tile_type tile_;
+    HostRangePolicy range_policy_host_;
+    DeviceRangePolicy range_policy_device_;
 };
 
 
@@ -628,6 +697,7 @@ auto build_data_graph (std::tuple<KernelTypes&...> kernels)
 
 /*
   // now we have maps of all data param connections!
+  
   // next, loop over kernels and make a node for each kernel
   //   how to determine number of inputs and outputs for each kernel?
   //   should I have counted them?
@@ -636,6 +706,20 @@ auto build_data_graph (std::tuple<KernelTypes&...> kernels)
   // should outputs will null destinations be automatically copied back to the host?
 */
 }
+
+/*
+template <int Rank, typename... T>
+class Test
+{
+  public:
+  Test() {};
+
+  void test()
+  {
+    Kokkos::parallel_for("test", 100, KOKKOS_LAMBDA(const int i) {});
+  }
+};
+*/
 
 // main algorithm object
 
@@ -668,9 +752,75 @@ class Algorithm
 };
 
 
+
+template<typename KernelType>
+void call_kernel_on_host(KernelType k)
+{
+
+    auto& kernel_name   = k.kernel_name_;
+    auto& kernel_lambda = k.kernel_lambda_;
+    auto& data_views    = k.data_views_host_;
+   
+    /*
+    auto& range_lower     = k.range_lower_;
+    auto& range_upper     = k.range_upper_;
+    auto  KernelRank      = k.kernel_rank_;
+    using ExecutionSpace  = Kokkos::KOKKOS_HOST;
+    using RangePolicyType = typename RangePolicy<KernelRank, ExecutionSpace>::type;
+    auto  range_policy    = RangePolicyType(range_lower, range_upper);
+    */
+    
+    auto& range_policy = k.range_policy_host_;
+
+    auto kernel_wrapper = [=](const auto... indices)
+    {
+        kernel_lambda(data_views, indices...);
+    };
+
+    Kokkos::parallel_for(kernel_name, range_policy, kernel_wrapper);
+}
+
+void 
+
+//__host__ __device__ extended lambdas cannot be generic lambdas
+// in other words, can only use templated lambdas with one or the other
+template<typename KernelType>
+void call_kernel_on_device(KernelType& k)
+//void call_kernel_on_device(Kernel& k)
+{
+
+   auto& kernel_name    = k.kernel_name_;
+   auto& kernel_rank    = k.kernel_rank_;
+   auto& kernel_lambda  = k.kernel_lambda_;
+   auto& data_views     = k.data_views_device_;
+   auto& range_policy   = k.range_policy_device_;
+
+   if (kernel_rank == 1) {
+       Kokkos::parallel_for(kernel_name, range_policy, KOKKOS_LAMBDA(int i) {
+         kernel_lambda(data_views, i);
+       });
+   } //else if (kernel_rank == 2) {} //etc.
+   
+}
+
+template<typename KernelType>
+void call_kernel(KernelType k, DeviceSelector device_selector)
+{
+    if (device_selector == DeviceSelector::HOST) {
+        call_kernel_on_host(k);
+    } else if (device_selector == DeviceSelector::DEVICE) {
+        call_kernel_on_device(k);
+    }
+}
+
+        
 //=============================================================================
 // Main
 //=============================================================================
+
+// degrees of freedom:
+// execution space: host, device
+// execution order:
 
 int main(int argc, char* argv[])
 {
@@ -679,8 +829,12 @@ int main(int argc, char* argv[])
     // Initialize Kokkos
     Kokkos::initialize(argc, argv);
 
+    //test_kokkos();
+    //Test<0, int, double> b;
+    //b.test();
+
     // 1D vector-vector multiply
-    N = 10000000;
+    N = 5;
     std::vector<double> x(N);
     std::iota(x.begin(), x.end(), 0.0);
     std::vector<double> y(N);
@@ -701,6 +855,7 @@ int main(int argc, char* argv[])
       },
       range_extent(0, z.size()));
 
+    /*
     Kernel k2(
       "1D vector-vector multiply 2",
       pack(std::as_const(x), std::as_const(z), w),
@@ -729,6 +884,7 @@ int main(int argc, char* argv[])
     Algorithm algo(pack(k1, k2, k3));
         
     build_data_graph(algo.kernels_);
+    */
 
     /*
     // matrix-vector multiply
@@ -830,15 +986,18 @@ int main(int argc, char* argv[])
     //   k2.parameters[0] is const and hence input
     // assert(&std::get<1>(k.parameters) == &std::get<0>(k2.parameters));
 
-
     // execute all kernels
     ////algo._deduce_dependencies();
     // algo.call();
+    //k1.call(DeviceSelector::HOST);
+    //k1.call();
+    DeviceSelector device_selector = DeviceSelector::HOST;
+    k1(device_selector);
 
     // 1D vector-vector multiply: verify the output
-    // for (auto i = 0; i < y.size(); i++) {
-    //    assert(x[i] * y[i] == z[i]);
-    //}
+    for (auto i = 0; i < y.size(); i++) {
+        assert(x[i] * y[i] == z[i]);
+    }
 
     // Finalize Kokkos
     Kokkos::finalize();
