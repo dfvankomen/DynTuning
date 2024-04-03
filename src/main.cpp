@@ -12,7 +12,7 @@
 #include <vector>
 
 #include <iostream>
-#define USE_EIGEN
+//#define USE_EIGEN
 #ifdef USE_EIGEN
 #include "Eigen"
 #endif
@@ -27,7 +27,7 @@
 #endif
 
 #ifndef KOKKOS_DEVICE
-#define KOKKOS_DEVICE Serial
+#define KOKKOS_DEVICE Cuda
 #endif
 
 #define TIMING(k, f)                                 \
@@ -112,17 +112,31 @@ template<typename ExecutionSpace, typename T>
     requires IsStdVector<T>
 struct EquivalentView<ExecutionSpace, T>
 {
+    
     // Type of the scalar in the data structure
-    using value_type =
-      std::conditional_t<std::is_const_v<T>,
-                         std::add_const_t<typename std::remove_reference_t<T>::value_type>,
-                         typename std::remove_reference_t<T>::value_type>;
-
+    using value_type = std::conditional_t<std::is_const_v<T>,
+                       std::add_const_t<typename std::remove_reference_t<T>::value_type>,
+                       //std::remove_cvref_t<typename std::remove_reference_t<T>::value_type>,
+                       typename std::remove_reference_t<T>::value_type>;
+   
     // Type for the equivalent view of the data structure
     using type = Kokkos::View<value_type*,
                               typename ExecutionSpace::array_layout,
                               typename ExecutionSpace::memory_space>;
 };
+
+//template<typename T>
+//struct EquivalentMirrorView
+//{
+//    // Type of the scalar in the data structure
+//    using value_type =
+//      std::conditional_t<std::is_const_v<T>,
+//                         std::add_const_t<typename std::remove_reference_t<T>::value_type>,
+//                         typename std::remove_reference_t<T>::value_type>;
+//
+//    // Type for the equivalent view of the data structure
+//    using type = T::HostMirror;
+//};
 
 #ifdef USE_EIGEN
 template<typename EigenT, typename KokkosLayout>
@@ -151,7 +165,7 @@ struct EquivalentView<ExecutionSpace, T>
 //=============================================================================
 // Views
 //=============================================================================
-
+    
 template<typename ExecutionSpace>
 struct Views
 {
@@ -167,7 +181,7 @@ struct Views
     {
         return typename EquivalentView<ExecutionSpace, T>::type(vector.data(), vector.size());
     }
-
+    
 #ifdef USE_EIGEN
     // Specialization for Eigen matrix
     template<typename T>
@@ -198,6 +212,22 @@ struct Views
     static auto create_views_from_tuple(std::tuple<ParameterTypes...> params_tuple)
     {
         return create_views_helper(params_tuple,
+                                   std::make_index_sequence<sizeof...(ParameterTypes)> {});
+    }
+    
+    // Creates host mirrors of views from the device views
+    // Ensures valid memcpy for Kokkos::deep_copy
+    template<typename Tuple, std::size_t... I>
+    static auto create_mirror_views_helper(const Tuple& params_tuple,
+                                    std::integer_sequence<std::size_t, I...>)
+    {
+        return std::make_tuple(Kokkos::create_mirror_view(std::get<I>(params_tuple))...);
+    }
+
+    template<typename... ParameterTypes>
+    static auto create_mirror_views_from_tuple(std::tuple<ParameterTypes...> params_tuple)
+    {
+        return create_mirror_views_helper(params_tuple,
                                    std::make_index_sequence<sizeof...(ParameterTypes)> {});
     }
 };
@@ -285,18 +315,18 @@ class Kernel
     using HostRangePolicy      = typename RangePolicy<KernelRank, HostExecutionSpace>::type;
     using DeviceRangePolicy    = typename RangePolicy<KernelRank, DeviceExecutionSpace>::type;
     using DataParamsType       = std::tuple<ParameterTypes&...>;
-    using HostDataViewsType    =
-        std::tuple<typename EquivalentView<HostExecutionSpace, ParameterTypes>::type...>;
     using DeviceDataViewsType  =
         std::tuple<typename EquivalentView<DeviceExecutionSpace, ParameterTypes>::type...>;
+    using HostDataViewsType    =
+        std::tuple<typename EquivalentView<DeviceExecutionSpace, ParameterTypes>::type::HostMirror...>;
 
     Kernel(const char* name,
                   std::tuple<ParameterTypes&...> params,
                   const RangeExtent<KernelRank>& extent)
       : kernel_name_(std::string(name))
       , data_params_(params)
-      , data_views_host_(Views<HostExecutionSpace>::create_views_from_tuple(params))
       , data_views_device_(Views<DeviceExecutionSpace>::create_views_from_tuple(params))
+      //, data_views_host_(Views<DeviceExecutionSpace>::create_mirror_views_from_tuple(data_views_device_))
       , range_lower_(extent.lower)
       , range_upper_(extent.upper)
       , range_policy_host_(HostRangePolicy(extent.lower, extent.upper))
@@ -735,14 +765,14 @@ void call_kernel(KernelType k, DeviceSelector device_selector)
 // degrees of freedom:
 // execution space: host, device
 // execution order:
-/*    
 struct FunctorK1 {
     template<typename ViewsTuple, typename Index>
     void operator()(ViewsTuple& views, const Index& i) const {
         auto& x = std::get<0>(views);
         auto& y = std::get<1>(views);
         auto& z = std::get<2>(views);
-        z[i]    = x[i] * y[i];
+        z(i)    = x(i) * y(i);
+        printf("z[%d] = %f\n", i, z[i]);
     }
 };
 template<typename... ParameterTypes>
@@ -754,7 +784,7 @@ auto K1(ParameterTypes&... data_params)
   return Kernel<1, FunctorK1, ParameterTypes...>(name, params, extent);
 }
 
-
+/*    
 struct FunctorK2 {
     template<typename ViewsTuple, typename Index>
     void operator()(ViewsTuple& views, const Index& i) const {
@@ -833,7 +863,7 @@ int main(int argc, char* argv[])
     std::vector<double> w(N);
     std::vector<double> q(N);
 
-//    auto k1 = K1(std::as_const(x), std::as_const(y), z); // vvm
+    auto k1 = K1(std::as_const(x), std::as_const(y), z); // vvm
 //    auto k2 = K2(std::as_const(x), std::as_const(z), w); // vvm
     //auto k3 = K3(std::as_const(x), std::as_const(z), q); // vvm
 
@@ -841,15 +871,15 @@ int main(int argc, char* argv[])
     //Algorithm algo(pack(k1, k2, k3));
     //build_data_graph(algo.kernels_);
 
-        
+/*        
     Eigen::MatrixXd a(N, N);
     //a.setRandom();
     a.setIdentity();
     std::vector<double> b(N, 2.0);
-    std::vector<double> c(N, 0.0);
-    
+    std::vector<double> c(N, 0.0);    
     auto k4 = K4(std::as_const(a), std::as_const(b), c); // mvm
-    
+*/
+
     /*
     // matrix-vector multiply
     {
@@ -952,13 +982,16 @@ int main(int argc, char* argv[])
 
 //    // TEST
     DeviceSelector device = DeviceSelector::DEVICE;
-//    printf("\nk1\n");
-//    k1(device);
-//    for (auto i = 0; i < y.size(); i++)
-//    {
-//        //assert(x[i] * y[i] == z[i]);
-//        printf("%f * %f = %f\n", x[i], y[i], z[i]);
-//    }
+    printf("\nk1\n");
+    Kokkos::deep_copy(std::get<0>(k1.data_views_device_), std::get<0>(k1.data_views_host_));
+    Kokkos::deep_copy(std::get<1>(k1.data_views_device_), std::get<1>(k1.data_views_host_));
+    k1(device);
+    Kokkos::deep_copy(std::get<2>(k1.data_views_host_), std::get<2>(k1.data_views_device_));
+    for (auto i = 0; i < z.size(); i++)
+    {
+        //assert(x[i] * y[i] == z[i]);
+        printf("%f * %f = %f\n", x[i], y[i], z[i]);
+    }
 //    printf("\nk2\n");
 //    k2(device);
 //    for (auto i = 0; i < w.size(); i++)
@@ -973,16 +1006,20 @@ int main(int argc, char* argv[])
 //    //    //assert(x[i] * z[i] == q[i]);
 //    //    printf("%f * %f = %f\n", x[i], z[i], q[i]);
 //    //}
+
+/*
     printf("\nk4\n");
     k4(device);
     std::cout << "A" << std::endl;
     std::cout << a << std::endl;
     std::cout << "x" << std::endl;
     for (const double& val : b)
-      std::cout << " " << val << std::endl;
+      std::cout << " " << val << std::endl; 
+    Kokkos::deep_copy(std::get<2>(k4.data_views_device_), std::get<2>(k4.data_views_host_));
     std::cout << "b" << std::endl;
     for (const double& val : c)
       std::cout << " " << val << std::endl;
+*/
 
     // Finalize Kokkos
     Kokkos::finalize();
