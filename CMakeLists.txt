@@ -44,7 +44,7 @@ message(STATUS "Kokkos Device Execution Space: Kokkos::" ${Kokkos_DEVICE})
 # Build
 add_executable(exe src/main.cpp)
 target_link_libraries(exe PRIVATE Kokkos::kokkos)
-#target_include_directories(exe PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/eigen/Eigen")
+target_include_directories(exe PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/eigen/Eigen")
 target_compile_options(exe PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:
                        --extended-lambdas
                        >)

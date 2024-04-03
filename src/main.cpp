@@ -11,6 +11,8 @@
 #include <tuple>
 #include <vector>
 
+#include <iostream>
+#define USE_EIGEN
 #ifdef USE_EIGEN
 #include "Eigen"
 #endif
@@ -287,7 +289,7 @@ class Kernel
         std::tuple<typename EquivalentView<HostExecutionSpace, ParameterTypes>::type...>;
     using DeviceDataViewsType  =
         std::tuple<typename EquivalentView<DeviceExecutionSpace, ParameterTypes>::type...>;
-    
+
     Kernel(const char* name,
                   std::tuple<ParameterTypes&...> params,
                   const RangeExtent<KernelRank>& extent)
@@ -673,6 +675,22 @@ class Algorithm
     */
 };
 
+/*
+template<int KernelRank, typename FunctorType, typename ViewsType>
+void functor_lambda(const FunctorType functor, ViewsType& views) {
+    return;
+}
+
+template<typename FunctorType, typename ViewsType>
+std::function<void (int)> functor_lambda<1>(const FunctorType functor, ViewsType& views) {
+    return KOKKOS_LAMBDA(int i) { functor(views, i); };
+}
+
+template<typename FunctorType, typename ViewsType>
+std::function<void (int, int)> functor_lambda<2>(const FunctorType functor, ViewsType& views) {
+    return KOKKOS_LAMBDA(int i, int j) { functor(views, i, j); };
+}
+*/
 
 template<int KernelRank, typename ViewsType, typename RangePolicyType, typename FunctorType>
 void call_kernel(const std::string& name,
@@ -680,12 +698,13 @@ void call_kernel(const std::string& name,
                  ViewsType& views,
                  const FunctorType functor)
 {
-    if constexpr (KernelRank == 1)
-    {
-        Kokkos::parallel_for(
-          name,
-          range_policy,
-          KOKKOS_LAMBDA(int i) { functor(views, i); });
+    //Kokkos::parallel_for(name, range_policy, functor_lambda<KernelRank>(functor, views));
+    if constexpr (KernelRank == 1) {
+        Kokkos::parallel_for(name, range_policy,
+            KOKKOS_LAMBDA(int i) { functor(views, i); });
+    } else if constexpr (KernelRank == 2) {
+        Kokkos::parallel_for(name, range_policy,
+            KOKKOS_LAMBDA(int i, int j) { functor(views, i, j); });
     }
 }
 
@@ -716,7 +735,7 @@ void call_kernel(KernelType k, DeviceSelector device_selector)
 // degrees of freedom:
 // execution space: host, device
 // execution order:
-    
+/*    
 struct FunctorK1 {
     template<typename ViewsTuple, typename Index>
     void operator()(ViewsTuple& views, const Index& i) const {
@@ -772,6 +791,27 @@ auto K3(ParameterTypes&... data_params)
   auto extent = range_extent(0, std::get<2>(params).size());
   return Kernel<1, FunctorK3, ParameterTypes...>(name, params, extent);
 }
+*/
+
+struct FunctorK4 {
+    template<typename ViewsTuple, typename Index>
+    void operator()(ViewsTuple& views, const Index& i, const Index& j) const {
+        auto& A = std::get<0>(views);
+        auto& x = std::get<1>(views);
+        auto& b = std::get<2>(views);
+        b(i) += A(i,j) * x(j);
+    }
+};
+template<typename... ParameterTypes>
+auto K4(ParameterTypes&... data_params)
+{
+  auto name   = "matrix-vector multiply";
+  auto params = pack(data_params...);
+  unsigned long N = std::get<0>(params).rows();
+  unsigned long M = std::get<0>(params).cols();
+  auto extent = range_extent({ 0, 0 }, { N, M });
+  return Kernel<2, FunctorK4, ParameterTypes...>(name, params, extent);
+}
 
 //=============================================================================
 // main
@@ -793,14 +833,23 @@ int main(int argc, char* argv[])
     std::vector<double> w(N);
     std::vector<double> q(N);
 
-    auto k1 = K1(std::as_const(x), std::as_const(y), z);
-    auto k2 = K2(std::as_const(x), std::as_const(z), w);
-    auto k3 = K3(std::as_const(x), std::as_const(z), q);
-    
-    // Create an Algorithm object
-    Algorithm algo(pack(k1, k2, k3));
-    build_data_graph(algo.kernels_);
+//    auto k1 = K1(std::as_const(x), std::as_const(y), z); // vvm
+//    auto k2 = K2(std::as_const(x), std::as_const(z), w); // vvm
+    //auto k3 = K3(std::as_const(x), std::as_const(z), q); // vvm
 
+    // Create an Algorithm object
+    //Algorithm algo(pack(k1, k2, k3));
+    //build_data_graph(algo.kernels_);
+
+        
+    Eigen::MatrixXd a(N, N);
+    //a.setRandom();
+    a.setIdentity();
+    std::vector<double> b(N, 2.0);
+    std::vector<double> c(N, 0.0);
+    
+    auto k4 = K4(std::as_const(a), std::as_const(b), c); // mvm
+    
     /*
     // matrix-vector multiply
     {
@@ -901,29 +950,39 @@ int main(int argc, char* argv[])
     //   k2.parameters[0] is const and hence input
     // assert(&std::get<1>(k.parameters) == &std::get<0>(k2.parameters));
 
-    // TEST
+//    // TEST
     DeviceSelector device = DeviceSelector::DEVICE;
-    printf("\nk1\n");
-    k1(device);
-    for (auto i = 0; i < y.size(); i++)
-    {
-        //assert(x[i] * y[i] == z[i]);
-        printf("%f * %f = %f\n", x[i], y[i], z[i]);
-    }
-    printf("\nk2\n");
-    k2(device);
-    for (auto i = 0; i < y.size(); i++)
-    {
-        //assert(x[i] * z[i] == w[i]);
-        printf("%f * %f = %f\n", x[i], z[i], w[i]);
-    }
-    printf("\nk3\n");
-    k3(device);
-    for (auto i = 0; i < y.size(); i++)
-    {
-        //assert(x[i] * z[i] == q[i]);
-        printf("%f * %f = %f\n", x[i], z[i], q[i]);
-    }
+//    printf("\nk1\n");
+//    k1(device);
+//    for (auto i = 0; i < y.size(); i++)
+//    {
+//        //assert(x[i] * y[i] == z[i]);
+//        printf("%f * %f = %f\n", x[i], y[i], z[i]);
+//    }
+//    printf("\nk2\n");
+//    k2(device);
+//    for (auto i = 0; i < w.size(); i++)
+//    {
+//        //assert(x[i] * z[i] == w[i]);
+//        printf("%f * %f = %f\n", x[i], z[i], w[i]);
+//    }
+//    //printf("\nk3\n");
+//    //k3(device);
+//    //for (auto i = 0; i < q.size(); i++)
+//    //{
+//    //    //assert(x[i] * z[i] == q[i]);
+//    //    printf("%f * %f = %f\n", x[i], z[i], q[i]);
+//    //}
+    printf("\nk4\n");
+    k4(device);
+    std::cout << "A" << std::endl;
+    std::cout << a << std::endl;
+    std::cout << "x" << std::endl;
+    for (const double& val : b)
+      std::cout << " " << val << std::endl;
+    std::cout << "b" << std::endl;
+    for (const double& val : c)
+      std::cout << " " << val << std::endl;
 
     // Finalize Kokkos
     Kokkos::finalize();
