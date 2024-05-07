@@ -733,31 +733,55 @@ std::function<void (int, int)> functor_lambda<2>(const FunctorType functor, View
 }
 */
 
+template<typename FunctorType, typename ViewsType>
+struct call_kernel_functor_rank_1
+{
+  FunctorType functor;
+  ViewsType& views;
+
+  call_kernel_functor_rank_1 (FunctorType functor, ViewsType& views)
+    : functor(functor)
+    , views(views)
+  {}
+
+  KOKKOS_FUNCTION
+  void operator() (int i) const {
+    functor(views, i);
+  }
+};
+
 template<int KernelRank, typename ViewsType, typename RangePolicyType, typename FunctorType>
 void call_kernel(const std::string& name,
                  const RangePolicyType& range_policy,
                  ViewsType& views,
                  const FunctorType functor)
 {
-    // Kokkos::parallel_for(name, range_policy, functor_lambda<KernelRank>(functor, views));
     if constexpr (KernelRank == 1)
     {
         Kokkos::parallel_for(
           name,
           range_policy,
-          KOKKOS_LAMBDA(int i) { functor(views, i); });
+          call_kernel_functor_rank_1(functor, views)
+          //KOKKOS_LAMBDA(int i) { functor(views, i); }
+        );
+        //{
+        //  auto& z = std::get<2>(views);
+        //  printf("\n");
+        //  for (auto i=0; i<5; i++)
+        //    printf("01: z_d[%d]   = %f\n", i, z[i]);
+        //}
     }
-    else if constexpr (KernelRank == 2)
-    {
-        Kokkos::parallel_for(
-          name,
-          range_policy,
-          KOKKOS_LAMBDA(int i, int j) { functor(views, i, j); });
-    }
+    //else if constexpr (KernelRank == 2)
+    //{
+    //    Kokkos::parallel_for(
+    //      name,
+    //      range_policy,
+    //      KOKKOS_LAMBDA(int i, int j) { functor(views, i, j); });
+    //}
 }
 
 template<typename KernelType>
-void call_kernel(KernelType k, DeviceSelector device_selector)
+void call_kernel(KernelType& k, DeviceSelector device_selector)
 {
     if (device_selector == DeviceSelector::HOST)
     {
@@ -765,6 +789,13 @@ void call_kernel(KernelType k, DeviceSelector device_selector)
                                       k.range_policy_host_,
                                       k.data_views_host_,
                                       k.kernel_functor_);
+      //{
+      //  auto& views = k.data_views_host_;
+      //  auto& z = std::get<2>(views);
+      //  printf("\n");
+      //  for (auto i=0; i<5; i++)
+      //    printf("02: z_d[%d]   = %f\n", i, z[i]);
+      //}
     }
     else if (device_selector == DeviceSelector::DEVICE)
     {
@@ -792,7 +823,9 @@ struct FunctorK1
         auto& y = std::get<1>(views);
         auto& z = std::get<2>(views);
         z(i)    = x(i) * y(i);
-        printf("z[%d] = %f\n", i, z[i]);
+        //printf("x_d[%d] = %f\n", i, x(i));
+        //printf("y_d[%d] = %f\n", i, y(i));
+        //printf("z_d[%d] = %f\n", i, z(i));
     }
 };
 template<typename... ParameterTypes>
@@ -875,12 +908,14 @@ int main(int argc, char* argv[])
 
     // Initialize Kokkos
     Kokkos::initialize(argc, argv);
+    
+    { // start Kokkos scope
 
     N = 5;
     std::vector<double> x(N);
-    std::iota(x.begin(), x.end(), 0.0);
+    std::iota(x.begin(), x.end(), 1.0);
     std::vector<double> y(N);
-    std::iota(y.begin(), y.end(), 0.0);
+    std::iota(y.begin(), y.end(), 1.0);
     std::vector<double> z(N);
     std::vector<double> w(N);
     std::vector<double> q(N);
@@ -1003,19 +1038,92 @@ int main(int argc, char* argv[])
     // assert(&std::get<1>(k.parameters) == &std::get<0>(k2.parameters));
 
     //    // TEST
-    DeviceSelector device = DeviceSelector::DEVICE;
-    printf("\nk1\n");
-    auto ext1 = std::get<0>(k1.data_views_device_).extent(0);
-    auto ext2 = std::get<0>(k1.data_views_host_).extent(0);
-    Kokkos::deep_copy(std::get<0>(k1.data_views_device_), std::get<0>(k1.data_views_host_));
-    Kokkos::deep_copy(std::get<1>(k1.data_views_device_), std::get<1>(k1.data_views_host_));
-    k1(device);
-    Kokkos::deep_copy(std::get<2>(k1.data_views_host_), std::get<2>(k1.data_views_device_));
-    for (auto i = 0; i < z.size(); i++)
+    DeviceSelector device;
+    if ((argc > 0) && (strcmp(argv[1], "device") == 0))
+      device = DeviceSelector::DEVICE;
+    else
+      device = DeviceSelector::HOST;
+
     {
-        // assert(x[i] * y[i] == z[i]);
-        printf("%f * %f = %f\n", x[i], y[i], z[i]);
+      printf("START\n");
+      auto& k   = k1;
+      //auto& x_h = std::get<0>(k.data_views_host_);
+      //auto& y_h = std::get<1>(k.data_views_host_);
+      //auto& z_h = std::get<2>(k.data_views_host_);
+      //auto& x_d = std::get<0>(k.data_views_device_);
+      //auto& y_d = std::get<1>(k.data_views_device_);
+      //auto& z_d = std::get<2>(k.data_views_device_);
+      Kokkos::View<double*> x_d("x_d", x.size());
+      Kokkos::View<double*> y_d("y_d", y.size());
+      Kokkos::View<double*> z_d("z_d", z.size());
+      Kokkos::View<double*>::HostMirror x_h = Kokkos::create_mirror_view(x_d);
+      Kokkos::View<double*>::HostMirror y_h = Kokkos::create_mirror_view(y_d);
+      Kokkos::View<double*>::HostMirror z_h = Kokkos::create_mirror_view(z_d);
+
+      // copy inputs to host mirror
+      std::memcpy(x_h.data(), x.data(), x.size() * sizeof(double));
+      for (auto i=0; i<x.size(); i++) {
+        //x_h(i) = x[i];
+        printf("x[%d]   = %f\n", i, x[i]);
+        printf("x_h[%d] = %f\n", i, x_h(i));
+      }
+      std::memcpy(y_h.data(), y.data(), y.size() * sizeof(double));
+      for (auto i=0; i<y.size(); i++) {
+        //y_h(i) = y[i];
+        printf("y[%d]   = %f\n", i, y[i]);
+        printf("y_h[%d] = %f\n", i, y_h(i));
+      }
+    
+      //copy inputs from host to device
+      //skip useless copy if only working on the host
+      if (device == DeviceSelector::DEVICE) {
+        Kokkos::deep_copy(x_d, x_h);
+        Kokkos::deep_copy(y_d, y_h);
+      }
+    
+      // execute the kernel
+      //k(device);
+      //call_kernel(k, device);
+      //{
+      //  auto& views = k.data_views_host_;
+      //  auto& zz = std::get<2>(views);
+      //  printf("\n");
+      //  for (auto i=0; i<5; i++)
+      //    printf("03: z_d[%d]   = %f\n", i, zz[i]);
+      //}
+      Kokkos::parallel_for("test", 5, KOKKOS_LAMBDA(const int i) {
+        z_d(i) = x_d(i) * y_d(i);
+      });
+
+      // copy output from device to host
+      // if only working on the host, don't copy back or it will clobber the result
+      if (device == DeviceSelector::DEVICE) {
+        Kokkos::deep_copy(z_h, z_d);
+      }
+      //{
+      //  auto& views = k.data_views_host_;
+      //  auto& zz = std::get<2>(views);
+      //  printf("\n");
+      //  for (auto i=0; i<5; i++)
+      //    printf("04: z_d[%d]   = %f\n", i, zz[i]);
+      //}
+
+      // copy outputs from host mirror
+      std::memcpy(z.data(), z_h.data(), z.size() * sizeof(double));
+      for (auto i=0; i<z.size(); i++) {
+        z[i] = z_h(i);
+        printf("z[%d]   = %f\n", i, z[i]);
+        printf("z_h[%d] = %f\n", i, z_h(i));
+      }
+
+      printf("END\n");
     }
+        
+    ////for (auto i = 0; i < z.size(); i++)
+    ////{
+    ////    // assert(x[i] * y[i] == z[i]);
+    ////    printf("%f * %f = %f\n", x[i], y[i], z[i]);
+    ////}
     //    printf("\nk2\n");
     //    k2(device);
     //    for (auto i = 0; i < w.size(); i++)
@@ -1044,6 +1152,8 @@ int main(int argc, char* argv[])
         for (const double& val : c)
           std::cout << " " << val << std::endl;
     */
+
+    } // end Kokkos scope
 
     // Finalize Kokkos
     Kokkos::finalize();
