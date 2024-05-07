@@ -831,14 +831,14 @@ auto K1(ParameterTypes&... data_params)
     return Kernel<1, FunctorK1, ParameterTypes...>(name, params, extent);
 }
 
-/*
 struct FunctorK2 {
     template<typename ViewsTuple, typename Index>
-    void operator()(ViewsTuple& views, const Index& i) const {
-        auto& x = std::get<0>(views);
-        auto& z = std::get<1>(views);
-        auto& w = std::get<2>(views);
-        w[i]    = x[i] * z[i];
+    KOKKOS_FUNCTION
+    void operator()(ViewsTuple views, const Index i) const {
+        auto x = std::get<0>(views);
+        auto z = std::get<1>(views);
+        auto w = std::get<2>(views);
+        w[i] = x[i] * z[i];
     }
 };
 template<typename... ParameterTypes>
@@ -850,14 +850,14 @@ auto K2(ParameterTypes&... data_params)
   return Kernel<1, FunctorK2, ParameterTypes...>(name, params, extent);
 }
 
-
 struct FunctorK3 {
     template<typename ViewsTuple, typename Index>
-    void operator()(ViewsTuple& views, const Index& i) const {
-        auto& x = std::get<0>(views);
-        auto& z = std::get<1>(views);
-        auto& q = std::get<2>(views);
-        q[i]    = x[i] * z[i];
+    KOKKOS_FUNCTION
+    void operator()(ViewsTuple views, const Index i) const {
+        auto x = std::get<0>(views);
+        auto z = std::get<1>(views);
+        auto q = std::get<2>(views);
+        q[i] = x[i] * z[i] * 2.0;
     }
 };
 template<typename... ParameterTypes>
@@ -868,16 +868,16 @@ auto K3(ParameterTypes&... data_params)
   auto extent = range_extent(0, std::get<2>(params).size());
   return Kernel<1, FunctorK3, ParameterTypes...>(name, params, extent);
 }
-*/
 
 struct FunctorK4
 {
     template<typename ViewsTuple, typename Index>
-    void operator()(ViewsTuple& views, const Index& i, const Index& j) const
+    KOKKOS_FUNCTION
+    void operator()(ViewsTuple views, const Index i, const Index j) const
     {
-        auto& A = std::get<0>(views);
-        auto& x = std::get<1>(views);
-        auto& b = std::get<2>(views);
+        auto A = std::get<0>(views);
+        auto x = std::get<1>(views);
+        auto b = std::get<2>(views);
         b(i) += A(i, j) * x(j);
     }
 };
@@ -921,8 +921,8 @@ int main(int argc, char* argv[])
     std::vector<double> q(N);
 
     auto k1 = K1(std::as_const(x), std::as_const(y), z); // vvm
-    //auto k2 = K2(std::as_const(x), std::as_const(z), w); // vvm
-    //auto k3 = K3(std::as_const(x), std::as_const(z), q); // vvm
+    auto k2 = K2(std::as_const(x), std::as_const(z), w); // vvm
+    auto k3 = K3(std::as_const(x), std::as_const(z), q); // vvm
 
     // Create an Algorithm object
     //Algorithm algo(pack(k1, k2, k3));
@@ -937,97 +937,6 @@ int main(int argc, char* argv[])
         auto k4 = K4(std::as_const(a), std::as_const(b), c); // mvm
     */
 
-    /*
-    // matrix-vector multiply
-    {
-        // set up data
-        int N = 10000000;
-        std::vector<double> x(N);
-        std::iota(x.begin(), x.end(), 0.0);
-        Eigen::MatrixXd y(N, N);
-        y.setRandom();
-        std::vector<double> z(N);
-
-        // define the kernel
-        Kernel k(
-            "matrix-vector multiply",
-            pack(std::as_const(x), std::as_const(y), z),
-            []<typename ViewsTuple, typename Index>(ViewsTuple& views, const Index& i, const
-    Index& j)
-            {
-                auto& x = std::get<0>(views);
-                auto& y = std::get<1>(views);
-                auto& z = std::get<2>(views);
-                z[i] += y[i, j] * x[j];
-            },
-            range_extent({ 0, 0 }, { N, N })
-        );
-
-        // run the kernel
-        TIMING(k.call());
-
-        // verify the output
-        for (int i = 0; i < z.size(); i++) {
-          double tmp = 0;
-          for (int j = 0; j < z.size(); i++) {
-            tmp = y[i, j] * x[i];
-          }
-          assert(x[i] * x[i] == z[i]);
-        }
-
-    }
-    */
-
-    /*
-    // 2D convolution
-    {
-        // set up data
-        unsigned int N = 32;
-        using MatrixType = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic,
-    Eigen::RowMajor>;
-
-        MatrixType x(N, N); // 32x32
-        x.setRandom();
-        N -= 2;
-        MatrixType y(N, N); // 30x30
-        y.setZero();
-
-        Kernel k(
-          "2D convolution",
-          pack(std::as_const(x), y),
-          []<typename ViewsTuple, typename Index>(ViewsTuple& views, const Index& i, const
-    Index& j)
-          {
-              auto& x_view = std::get<0>(views);
-              auto x_subview =
-                Kokkos::subview(x_view, Kokkos::make_pair(i, i + 3), Kokkos::make_pair(j, j +
-    3)); auto& y_view = std::get<1>(views);
-
-              auto tmp = 0.0;
-              for (Index ii = 0; ii < 3; ii++)
-              {
-                  for (Index jj = 0; jj < 3; jj++)
-                  {
-                      tmp += x_subview(ii, jj);
-                  }
-              }
-              y_view(i, j) = tmp;
-          },
-          range_extent({ 0, 0 }, { N, N }));
-
-        k.call();
-
-        for (auto i = 0; i < N; i++)
-        {
-            for (auto j = 0; j < N; j++)
-            {
-                auto diff = y(i, j) - x.block(i, j, 3, 3).sum();
-                assert(abs(diff) < 1e-14);
-            }
-        }
-    }
-    */
-
     // At the end, the algorithm needs to know the "final" output that needs copied to the host
     // Data needs moved if 1) it is a kernel input or 2) algorithm output
     // Data view deallocation if 1) it is not a downstream input 2) and not algorithm output
@@ -1037,8 +946,10 @@ int main(int argc, char* argv[])
     //   k2.parameters[0] is const and hence input
     // assert(&std::get<1>(k.parameters) == &std::get<0>(k2.parameters));
 
+    // TESTS
+
     {
-      printf("START\n");
+      printf("\nk1\n");
       auto& k = k1;
       auto& x_h = std::get<0>(k.data_views_host_);
       auto& y_h = std::get<1>(k.data_views_host_);
@@ -1046,14 +957,6 @@ int main(int argc, char* argv[])
       auto& x_d = std::get<0>(k.data_views_device_);
       auto& y_d = std::get<1>(k.data_views_device_);
       auto& z_d = std::get<2>(k.data_views_device_);
-
-      // print host inputs
-      printf("\n");
-      for (auto i=0; i<x.size(); i++)
-        printf("x[%d]   = %f\n", i, x[i]);
-      printf("\n");
-      for (auto i=0; i<y.size(); i++)
-        printf("y[%d]   = %f\n", i, y[i]);
     
       //copy inputs from host to device
       if (device == DeviceSelector::DEVICE) {
@@ -1069,47 +972,74 @@ int main(int argc, char* argv[])
           Kokkos::deep_copy(z_h, z_d);
       }
 
-      // print host outputs
-      printf("\n");
-      for (auto i=0; i<z.size(); i++)
-        printf("z[%d]   = %f\n", i, z[i]);
-
-      printf("END\n");
+      // check outputs
+      for (auto i = 0; i < N; i++) {
+        printf("[%d] %f * %f = %f\n", i, x[i], y[i], z[i]);
+        assert(z[i] == x[i]*y[i]);
+      }
     }
-        
-    ////for (auto i = 0; i < z.size(); i++)
-    ////{
-    ////    // assert(x[i] * y[i] == z[i]);
-    ////    printf("%f * %f = %f\n", x[i], y[i], z[i]);
-    ////}
-    //    printf("\nk2\n");
-    //    k2(device);
-    //    for (auto i = 0; i < w.size(); i++)
-    //    {
-    //        //assert(x[i] * z[i] == w[i]);
-    //        printf("%f * %f = %f\n", x[i], z[i], w[i]);
-    //    }
-    //    //printf("\nk3\n");
-    //    //k3(device);
-    //    //for (auto i = 0; i < q.size(); i++)
-    //    //{
-    //    //    //assert(x[i] * z[i] == q[i]);
-    //    //    printf("%f * %f = %f\n", x[i], z[i], q[i]);
-    //    //}
 
-    /*
-        printf("\nk4\n");
-        k4(device);
-        std::cout << "A" << std::endl;
-        std::cout << a << std::endl;
-        std::cout << "x" << std::endl;
-        for (const double& val : b)
-          std::cout << " " << val << std::endl;
-        Kokkos::deep_copy(std::get<2>(k4.data_views_device_), std::get<2>(k4.data_views_host_));
-        std::cout << "b" << std::endl;
-        for (const double& val : c)
-          std::cout << " " << val << std::endl;
-    */
+    {
+      printf("\nk2\n");
+      auto& k = k2;
+      auto& x_h = std::get<0>(k.data_views_host_);
+      auto& z_h = std::get<1>(k.data_views_host_);
+      auto& w_h = std::get<2>(k.data_views_host_);
+      auto& x_d = std::get<0>(k.data_views_device_);
+      auto& z_d = std::get<1>(k.data_views_device_);
+      auto& w_d = std::get<2>(k.data_views_device_);
+    
+      //copy inputs from host to device
+      if (device == DeviceSelector::DEVICE) {
+          Kokkos::deep_copy(x_d, x_h);
+          Kokkos::deep_copy(z_d, z_h);
+      }
+    
+      // execute the kernel
+      k(device);
+
+      // copy output from device to host
+      if (device == DeviceSelector::DEVICE) {
+          Kokkos::deep_copy(w_h, w_d);
+      }
+
+      // check outputs
+      for (auto i = 0; i < N; i++) {
+        printf("[%d] %f * %f = %f\n", i, x[i], z[i], w[i]);
+        assert(w[i] == x[i]*z[i]);
+      }
+    }
+
+    {
+      printf("\nk3\n");
+      auto& k = k3;
+      auto& x_h = std::get<0>(k.data_views_host_);
+      auto& z_h = std::get<1>(k.data_views_host_);
+      auto& q_h = std::get<2>(k.data_views_host_);
+      auto& x_d = std::get<0>(k.data_views_device_);
+      auto& z_d = std::get<1>(k.data_views_device_);
+      auto& q_d = std::get<2>(k.data_views_device_);
+    
+      //copy inputs from host to device
+      if (device == DeviceSelector::DEVICE) {
+          Kokkos::deep_copy(x_d, x_h);
+          Kokkos::deep_copy(z_d, z_h);
+      }
+    
+      // execute the kernel
+      k(device);
+
+      // copy output from device to host
+      if (device == DeviceSelector::DEVICE) {
+          Kokkos::deep_copy(q_h, q_d);
+      }
+
+      // check outputs
+      for (auto i = 0; i < N; i++) {
+        printf("[%d] %f * %f * 2.0 = %f\n", i, x[i], z[i], q[i]);
+        assert(q[i] == x[i]*z[i]*2.0);
+      }
+    }
 
     } // end Kokkos scope
 
