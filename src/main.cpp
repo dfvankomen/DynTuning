@@ -1053,21 +1053,31 @@ int main(int argc, char* argv[])
       //auto& x_d = std::get<0>(k.data_views_device_);
       //auto& y_d = std::get<1>(k.data_views_device_);
       //auto& z_d = std::get<2>(k.data_views_device_);
-      Kokkos::View<double*> x_d("x_d", x.size());
-      Kokkos::View<double*> y_d("y_d", y.size());
-      Kokkos::View<double*> z_d("z_d", z.size());
-      Kokkos::View<double*>::HostMirror x_h = Kokkos::create_mirror_view(x_d);
-      Kokkos::View<double*>::HostMirror y_h = Kokkos::create_mirror_view(y_d);
-      Kokkos::View<double*>::HostMirror z_h = Kokkos::create_mirror_view(z_d);
+
+      //host mirror approach
+      //Kokkos::View<double*> x_d("x_d", x.size());
+      //Kokkos::View<double*> y_d("y_d", y.size());
+      //Kokkos::View<double*> z_d("z_d", z.size());
+      //Kokkos::View<double*>::HostMirror x_h = Kokkos::create_mirror_view(x_d);
+      //Kokkos::View<double*>::HostMirror y_h = Kokkos::create_mirror_view(y_d);
+      //Kokkos::View<double*>::HostMirror z_h = Kokkos::create_mirror_view(z_d);
+
+      //non-owning view approach
+      Kokkos::View<double*, Kokkos::KOKKOS_HOST> x_h(x.data(), x.size());
+      Kokkos::View<double*, Kokkos::KOKKOS_HOST> y_h(y.data(), y.size());
+      Kokkos::View<double*, Kokkos::KOKKOS_HOST> z_h(z.data(), z.size());
+      Kokkos::View<double*, Kokkos::KOKKOS_DEVICE> x_d("x_d",  x.size());
+      Kokkos::View<double*, Kokkos::KOKKOS_DEVICE> y_d("y_d",  y.size());
+      Kokkos::View<double*, Kokkos::KOKKOS_DEVICE> z_d("z_d",  z.size());
 
       // copy inputs to host mirror
-      std::memcpy(x_h.data(), x.data(), x.size() * sizeof(double));
+      //std::memcpy(x_h.data(), x.data(), x.size() * sizeof(double));
       for (auto i=0; i<x.size(); i++) {
         //x_h(i) = x[i];
         printf("x[%d]   = %f\n", i, x[i]);
         printf("x_h[%d] = %f\n", i, x_h(i));
       }
-      std::memcpy(y_h.data(), y.data(), y.size() * sizeof(double));
+      //std::memcpy(y_h.data(), y.data(), y.size() * sizeof(double));
       for (auto i=0; i<y.size(); i++) {
         //y_h(i) = y[i];
         printf("y[%d]   = %f\n", i, y[i]);
@@ -1076,10 +1086,10 @@ int main(int argc, char* argv[])
     
       //copy inputs from host to device
       //skip useless copy if only working on the host
-      if (device == DeviceSelector::DEVICE) {
-        Kokkos::deep_copy(x_d, x_h);
-        Kokkos::deep_copy(y_d, y_h);
-      }
+      //if (device == DeviceSelector::DEVICE) {
+      Kokkos::deep_copy(x_d, x_h);
+      Kokkos::deep_copy(y_d, y_h);
+      //}
     
       // execute the kernel
       //k(device);
@@ -1097,9 +1107,9 @@ int main(int argc, char* argv[])
 
       // copy output from device to host
       // if only working on the host, don't copy back or it will clobber the result
-      if (device == DeviceSelector::DEVICE) {
-        Kokkos::deep_copy(z_h, z_d);
-      }
+      //if (device == DeviceSelector::DEVICE) {
+      Kokkos::deep_copy(z_h, z_d);
+      //}
       //{
       //  auto& views = k.data_views_host_;
       //  auto& zz = std::get<2>(views);
@@ -1109,7 +1119,7 @@ int main(int argc, char* argv[])
       //}
 
       // copy outputs from host mirror
-      std::memcpy(z.data(), z_h.data(), z.size() * sizeof(double));
+      //std::memcpy(z.data(), z_h.data(), z.size() * sizeof(double));
       for (auto i=0; i<z.size(); i++) {
         z[i] = z_h(i);
         printf("z[%d]   = %f\n", i, z[i]);
