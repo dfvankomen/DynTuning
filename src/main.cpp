@@ -124,9 +124,12 @@ struct EquivalentView<ExecutionSpace, T>
     //                    typename std::remove_reference_t<T>::value_type>;
 
     // Type for the equivalent view of the data structure
-    using type = Kokkos::View<value_type*,
-                              typename ExecutionSpace::array_layout,
-                              typename ExecutionSpace::memory_space>;
+    //using type = Kokkos::View<value_type*,
+    //                          typename ExecutionSpace::array_layout,
+    //                          typename ExecutionSpace::memory_space>;
+    
+    // maybe we don't need to set the memory layout directly...
+    using type = Kokkos::View<value_type*, ExecutionSpace>;
 };
 
 // template<typename T>
@@ -179,7 +182,7 @@ struct Views
     static typename EquivalentView<ExecutionSpace, T>::type create_view(T&);
 
     // Specialization for std::vector (default allocator)
-    template<typename T>
+    template<int OWNING, typename T>
         requires IsStdVector<T>
     static auto create_view(T& vector)
     {
@@ -187,7 +190,11 @@ struct Views
         // Before you panic future developer...this const_cast is a neccessity to allow "inputs" to
         // be copied to the device.  However, we do need to find a way to restore constness later
         // for the sake of the kernel lambda code.
-        return ViewType(const_cast<ViewType::value_type*>(vector.data()), vector.size());
+
+        if constexpr (OWNING == 0)
+          return ViewType(const_cast<ViewType::value_type*>(vector.data()), vector.size());
+        else
+          return ViewType(vector.size());
     }
 
 #ifdef USE_EIGEN
@@ -203,41 +210,41 @@ struct Views
 
     // Creates view for a given execution space for a variadic list of data structures
     // (each needs a create_view specialization)
-    template<typename... ParameterTypes>
-    static auto create_views(ParameterTypes&&... params)
-    {
-        return std::make_tuple(Views<ExecutionSpace>::create_view(params)...);
-    }
+    //template<typename... ParameterTypes>
+    //static auto create_views(ParameterTypes&&... params)
+    //{
+    //    return std::make_tuple(Views<ExecutionSpace>::create_view(params)...);
+    //}
 
-    template<typename Tuple, std::size_t... I>
+    template<int OWNING, typename Tuple, std::size_t... I>
     static auto create_views_helper(const Tuple& params_tuple,
                                     std::integer_sequence<std::size_t, I...>)
     {
-        return std::make_tuple(Views<ExecutionSpace>::create_view(std::get<I>(params_tuple))...);
+        return std::make_tuple(Views<ExecutionSpace>::create_view<OWNING>(std::get<I>(params_tuple))...);
     }
 
-    template<typename... ParameterTypes>
+    template<int OWNING, typename... ParameterTypes>
     static auto create_views_from_tuple(std::tuple<ParameterTypes...> params_tuple)
     {
-        return create_views_helper(params_tuple,
+        return create_views_helper<OWNING>(params_tuple,
                                    std::make_index_sequence<sizeof...(ParameterTypes)> {});
     }
 
-    // Creates host mirrors of views from the device views
-    // Ensures valid memcpy for Kokkos::deep_copy
-    template<typename Tuple, std::size_t... I>
-    static auto create_mirror_views_helper(const Tuple& params_tuple,
-                                           std::integer_sequence<std::size_t, I...>)
-    {
-        return std::make_tuple(Kokkos::create_mirror_view(std::get<I>(params_tuple))...);
-    }
+    //// Creates host mirrors of views from the device views
+    //// Ensures valid memcpy for Kokkos::deep_copy
+    //template<typename Tuple, std::size_t... I>
+    //static auto create_mirror_views_helper(const Tuple& params_tuple,
+    //                                       std::integer_sequence<std::size_t, I...>)
+    //{
+    //    return std::make_tuple(Kokkos::create_mirror_view(std::get<I>(params_tuple))...);
+    //}
 
-    template<typename... ParameterTypes>
-    static auto create_mirror_views_from_tuple(std::tuple<ParameterTypes...> params_tuple)
-    {
-        return create_mirror_views_helper(params_tuple,
-                                          std::make_index_sequence<sizeof...(ParameterTypes)> {});
-    }
+    //template<typename... ParameterTypes>
+    //static auto create_mirror_views_from_tuple(std::tuple<ParameterTypes...> params_tuple)
+    //{
+    //    return create_mirror_views_helper(params_tuple,
+    //                                      std::make_index_sequence<sizeof...(ParameterTypes)> {});
+    //}
 };
 
 
@@ -323,19 +330,26 @@ class Kernel
     using HostRangePolicy      = typename RangePolicy<KernelRank, HostExecutionSpace>::type;
     using DeviceRangePolicy    = typename RangePolicy<KernelRank, DeviceExecutionSpace>::type;
     using DataParamsType       = std::tuple<ParameterTypes&...>;
+    //using DeviceDataViewsType =
+    //  std::tuple<typename EquivalentView<DeviceExecutionSpace, ParameterTypes>::type...>;
+    //using HostDataViewsType = std::tuple<
+    //  typename EquivalentView<DeviceExecutionSpace, ParameterTypes>::type::HostMirror...>;
     using DeviceDataViewsType =
       std::tuple<typename EquivalentView<DeviceExecutionSpace, ParameterTypes>::type...>;
-    using HostDataViewsType = std::tuple<
-      typename EquivalentView<DeviceExecutionSpace, ParameterTypes>::type::HostMirror...>;
+    using HostDataViewsType = 
+      std::tuple<typename EquivalentView<DeviceExecutionSpace, ParameterTypes>::type...>;
 
     Kernel(const char* name,
            std::tuple<ParameterTypes&...> params,
            const RangeExtent<KernelRank>& extent)
       : kernel_name_(std::string(name))
       , data_params_(params)
-      , data_views_device_(Views<DeviceExecutionSpace>::create_views_from_tuple(params))
-      , data_views_host_(
-          Views<DeviceExecutionSpace>::create_mirror_views_from_tuple(data_views_device_))
+      //, data_views_device_(Views<DeviceExecutionSpace>::create_views_from_tuple(params))
+      //, data_views_host_(
+      //    Views<DeviceExecutionSpace>::create_mirror_views_from_tuple(data_views_device_))
+      , data_views_host_(Views<HostExecutionSpace>::create_views_from_tuple<0>(params)) // non-owning
+      , data_views_host_tmp_(Views<HostExecutionSpace>::create_views_from_tuple<1>(params)) // owning temp space
+      , data_views_device_(Views<DeviceExecutionSpace>::create_views_from_tuple<2>(params)) // owning
       , range_lower_(extent.lower)
       , range_upper_(extent.upper)
       , range_policy_host_(HostRangePolicy(extent.lower, extent.upper))
@@ -372,8 +386,9 @@ class Kernel
     // Data parameters and views thereof (in the execution spaces that will be considered)
     DataParamsType data_params_;
     // Note: this has to go first for initialization to function correctly.
-    DeviceDataViewsType data_views_device_;
     HostDataViewsType data_views_host_;
+    HostDataViewsType data_views_host_tmp_;
+    DeviceDataViewsType data_views_device_;
     
 
     // Properties pertaining to range policy
