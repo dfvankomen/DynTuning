@@ -45,17 +45,22 @@ message(STATUS "Kokkos Device Execution Space: Kokkos::" ${Kokkos_DEVICE})
 add_executable(exe src/main.cpp)
 target_link_libraries(exe PRIVATE Kokkos::kokkos)
 target_include_directories(exe PRIVATE
-	                   "${CMAKE_CURRENT_SOURCE_DIR}/eigen/Eigen"
-			   "${CUDA_HOME}/include"
-			   )
-target_compile_options(exe PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:
-                       --extended-lambdas
-                       >)
+	"${CMAKE_CURRENT_SOURCE_DIR}/eigen/Eigen"
+	"${CUDA_HOME}/include"
+  src
+)
+target_compile_options(exe PRIVATE
+  $<$<COMPILE_LANGUAGE:CUDA>:
+    --extended-lambdas
+  >
+)
 target_compile_features(exe PRIVATE cxx_std_20)
 target_compile_definitions(exe PUBLIC
   KOKKOS_HOST=${Kokkos_HOST}
   KOKKOS_DEVICE=${Kokkos_DEVICE}
 )
 set_target_properties(exe PROPERTIES OUTPUT_NAME ${PROJECT_NAME})
+
+
 
 

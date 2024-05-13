@@ -10,7 +10,7 @@ cmake_cmd="cmake ../ \
   -DCMAKE_CXX_COMPILER=${KOKKOS_HOME}/bin/nvcc_wrapper \
   -DKokkos_DEVICE=ON"
 
-make_cmd="make"
+make_cmd="make -j 8"
 
 # run cmake
 if [[ -n "${cntr_inst}" ]]; then
