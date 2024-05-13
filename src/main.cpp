@@ -11,7 +11,8 @@
 #include <numeric>
 #include <tuple>
 #include <vector>
-// #define USE_EIGEN
+
+//#define USE_EIGEN
 #ifdef USE_EIGEN
 #include "Eigen"
 #endif
@@ -114,13 +115,16 @@ concept IsEigenMatrix = std::is_base_of_v<Eigen::MatrixBase<std::decay_t<T>>, st
 // EquivalentView
 //=============================================================================
 
+//https://kokkos.org/kokkos-core-wiki/API/core/KokkosConcepts.html
+//https://kokkos.org/kokkos-core-wiki/API/core/view/view.html
+
 /// Used to map a container to the corresponding view type
-template<typename ExecutionSpace, typename T>
+template<typename ExecutionSpace, typename MemoryLayout, typename T>
 struct EquivalentView;
 
-template<typename ExecutionSpace, typename T>
+template<typename ExecutionSpace, typename MemoryLayout, typename T>
     requires IsStdVector<T>
-struct EquivalentView<ExecutionSpace, T>
+struct EquivalentView<ExecutionSpace, MemoryLayout, T>
 {
 
     // Type of the scalar in the data structure
@@ -131,79 +135,75 @@ struct EquivalentView<ExecutionSpace, T>
     //                    typename std::remove_reference_t<T>::value_type>;
 
     // Type for the equivalent view of the data structure
+    using type = Kokkos::View<value_type*, MemoryLayout, ExecutionSpace>;
     //using type = Kokkos::View<value_type*,
     //                          typename ExecutionSpace::array_layout,
     //                          typename ExecutionSpace::memory_space>;
-    
-    // maybe we don't need to set the memory layout directly...
-    using type = Kokkos::View<value_type*, ExecutionSpace>;
+
 };
 
-// template<typename T>
-// struct EquivalentMirrorView
-//{
-//     // Type of the scalar in the data structure
-//     using value_type =
-//       std::conditional_t<std::is_const_v<T>,
-//                          std::add_const_t<typename std::remove_reference_t<T>::value_type>,
-//                          typename std::remove_reference_t<T>::value_type>;
-//
-//     // Type for the equivalent view of the data structure
-//     using type = T::HostMirror;
-// };
-
+/*
 #ifdef USE_EIGEN
 template<typename EigenT, typename KokkosLayout>
 concept IsLayoutSame =
   (std::is_same_v<KokkosLayout, Kokkos::LayoutRight> && std::decay_t<EigenT>::IsRowMajor == 1) ||
   (std::is_same_v<KokkosLayout, Kokkos::LayoutLeft> && std::decay_t<EigenT>::IsRowMajor == 0);
 #endif
+*/
 
 #ifdef USE_EIGEN
-template<typename ExecutionSpace, typename T>
+template<typename ExecutionSpace, typename MemoryLayout, typename T>
     requires IsEigenMatrix<T>
-struct EquivalentView<ExecutionSpace, T>
+struct EquivalentView<ExecutionSpace, MemoryLayout, T>
 {
     // Type of the scalar in the data structure
-    using value_type = std::conditional_t<std::is_const_v<T>,
-                                          const typename std::remove_reference_t<T>::value_type,
-                                          typename std::remove_reference_t<T>::value_type>;
+    // Note: this ignores constness on purpose to allow deep-copies of "inputs" to kernels
+    using value_type = typename std::remove_reference_t<T>::value_type;
 
     // Type for the equivalent view of the data structure
-    using type = Kokkos::View<value_type**,
-                              typename ExecutionSpace::array_layout,
-                              typename ExecutionSpace::memory_space>;
+    using type = Kokkos::View<value_type**, MemoryLayout, ExecutionSpace>;
 };
 #endif
+
 
 //=============================================================================
 // Views
 //=============================================================================
 
-template<typename ExecutionSpace>
+template<typename ExecutionSpace, ViewMemoryType MemoryType>
 struct Views
 {
     // Create a view for a given executation space and C++ data structure
     // (each structure needs a specialization)
     template<typename T>
-    static typename EquivalentView<ExecutionSpace, T>::type create_view(T&);
+    static typename EquivalentView<ExecutionSpace, Kokkos::LayoutLeft, T>::type create_view(T&);
 
     // Specialization for std::vector (default allocator)
-    template<ViewMemoryType MemoryType, typename T>
+    template<typename T>
         requires IsStdVector<T>
     static auto create_view(T& vector)
     {
-        using ViewType = typename EquivalentView<ExecutionSpace, T>::type;
+        
         // Before you panic future developer...this const_cast is a neccessity to allow "inputs" to
         // be copied to the device.  However, we do need to find a way to restore constness later
         // for the sake of the kernel lambda code.
 
-        if constexpr (MemoryType == ViewMemoryType::NONOWNING)
-          return ViewType(const_cast<ViewType::value_type*>(vector.data()), vector.size());
-        else if constexpr (MemoryType == ViewMemoryType::TMP) // vectors don't need tmp space
-          return ViewType("", 0);
-        else if constexpr (MemoryType == ViewMemoryType::OWNING)
-          return ViewType("", vector.size());
+        // host layout same as device
+        if constexpr (MemoryType == ViewMemoryType::NONOWNING) {
+            using ViewType = typename EquivalentView<ExecutionSpace, typename ExecutionSpace::array_layout, T>::type;
+            //using ViewType = typename EquivalentView<ExecutionSpace, T>::type;
+            return ViewType(const_cast<ViewType::value_type*>(vector.data()), vector.size());
+
+        // vectors don't need tmp space
+        } else if constexpr (MemoryType == ViewMemoryType::TMP) {
+            using ViewType = typename EquivalentView<ExecutionSpace, Kokkos::LayoutLeft, T>::type;
+            return ViewType("", 0);
+
+        // device with ideal device layout
+        } else if constexpr (MemoryType == ViewMemoryType:: OWNING) {
+            using ViewType = typename EquivalentView<ExecutionSpace, Kokkos::LayoutLeft, T>::type;
+            return ViewType("", vector.size());
+        }
     }
 
 #ifdef USE_EIGEN
@@ -212,48 +212,43 @@ struct Views
         requires IsEigenMatrix<T>
     static auto create_view(T& matrix)
     {
-        using ViewType = typename EquivalentView<ExecutionSpace, T>::type;
-        return ViewType(matrix.data(), matrix.rows(), matrix.cols());
+        // host layout may not be ideal for device
+        if constexpr (MemoryType == ViewMemoryType::NONOWNING) {
+            using ViewType = typename EquivalentView<ExecutionSpace, typename ExecutionSpace::array_layout, T>::type;
+            //using ViewType = typename EquivalentView<ExecutionSpace, T>::type;
+            return ViewType(const_cast<ViewType::value_type*>(matrix.data()),
+                static_cast<size_t>(matrix.rows()), static_cast<size_t>(matrix.cols()));
+
+        // tmp space on host with same layout as the device
+        } else if constexpr (MemoryType == ViewMemoryType::TMP) {
+            using ViewType = typename EquivalentView<ExecutionSpace, Kokkos::LayoutLeft, T>::type;
+            return ViewType("", 0, 0);
+
+        // device with ideal device layout
+        } else if constexpr (MemoryType == ViewMemoryType:: OWNING) {
+            using ViewType = typename EquivalentView<ExecutionSpace, Kokkos::LayoutLeft, T>::type;
+            return ViewType("", matrix.rows(), matrix.cols());
+        }
     }
 #endif
 
     // Creates view for a given execution space for a variadic list of data structures
     // (each needs a create_view specialization)
-    //template<typename... ParameterTypes>
-    //static auto create_views(ParameterTypes&&... params)
-    //{
-    //    return std::make_tuple(Views<ExecutionSpace>::create_view(params)...);
-    //}
 
-    template<ViewMemoryType MemoryType, typename Tuple, std::size_t... I>
+    template<typename Tuple, std::size_t... I>
     static auto create_views_helper(const Tuple& params_tuple,
                                     std::integer_sequence<std::size_t, I...>)
     {
-        return std::make_tuple(Views<ExecutionSpace>::create_view<MemoryType>(std::get<I>(params_tuple))...);
+        return std::make_tuple(Views<ExecutionSpace, MemoryType>::create_view(std::get<I>(params_tuple))...);
     }
 
-    template<ViewMemoryType MemoryType, typename... ParameterTypes>
+    template<typename... ParameterTypes>
     static auto create_views_from_tuple(std::tuple<ParameterTypes...> params_tuple)
     {
-        return create_views_helper<MemoryType>(params_tuple,
+        return create_views_helper(params_tuple,
                                    std::make_index_sequence<sizeof...(ParameterTypes)> {});
     }
 
-    //// Creates host mirrors of views from the device views
-    //// Ensures valid memcpy for Kokkos::deep_copy
-    //template<typename Tuple, std::size_t... I>
-    //static auto create_mirror_views_helper(const Tuple& params_tuple,
-    //                                       std::integer_sequence<std::size_t, I...>)
-    //{
-    //    return std::make_tuple(Kokkos::create_mirror_view(std::get<I>(params_tuple))...);
-    //}
-
-    //template<typename... ParameterTypes>
-    //static auto create_mirror_views_from_tuple(std::tuple<ParameterTypes...> params_tuple)
-    //{
-    //    return create_mirror_views_helper(params_tuple,
-    //                                      std::make_index_sequence<sizeof...(ParameterTypes)> {});
-    //}
 };
 
 
@@ -325,6 +320,8 @@ RangeExtent<2> range_extent(const Kokkos::Array<ArrayIndex, 2>& lower,
 // Kernel
 //=============================================================================
 
+
+
 template<int KernelRank, class FunctorType, typename... ParameterTypes>
 class Kernel
 {
@@ -343,11 +340,15 @@ class Kernel
     //  std::tuple<typename EquivalentView<DeviceExecutionSpace, ParameterTypes>::type...>;
     //using HostDataViewsType = std::tuple<
     //  typename EquivalentView<DeviceExecutionSpace, ParameterTypes>::type::HostMirror...>;
-    using DeviceDataViewsType =
-      std::tuple<typename EquivalentView<DeviceExecutionSpace, ParameterTypes>::type...>;
+    
+    // START HERE, how do we set this type at compile time when both the layout and param type will vary?
     using HostDataViewsType = 
-      std::tuple<typename EquivalentView<HostExecutionSpace, ParameterTypes>::type...>;
-
+        std::tuple<typename EquivalentView<HostExecutionSpace, HostExecutionSpace::array_layout, ParameterTypes>::type...>;
+    using tmpDataViewsType = 
+        std::tuple<typename EquivalentView<HostExecutionSpace, Kokkos::LayoutLeft, ParameterTypes>::type...>;
+    using DeviceDataViewsType =
+        std::tuple<typename EquivalentView<DeviceExecutionSpace, Kokkos::LayoutLeft, ParameterTypes>::type...>;
+    
     Kernel(const char* name,
            std::tuple<ParameterTypes&...> params,
            const RangeExtent<KernelRank>& extent)
@@ -356,9 +357,9 @@ class Kernel
       //, data_views_device_(Views<DeviceExecutionSpace>::create_views_from_tuple(params))
       //, data_views_host_(
       //    Views<DeviceExecutionSpace>::create_mirror_views_from_tuple(data_views_device_))
-      , data_views_host_(Views<HostExecutionSpace>::create_views_from_tuple<ViewMemoryType::NONOWNING>(params)) // non-owning
-      , data_views_host_tmp_(Views<HostExecutionSpace>::create_views_from_tuple<ViewMemoryType::TMP>(params)) // owning temp space
-      , data_views_device_(Views<DeviceExecutionSpace>::create_views_from_tuple<ViewMemoryType::OWNING>(params)) // owning
+      , data_views_host_(Views<HostExecutionSpace, ViewMemoryType::NONOWNING>::create_views_from_tuple(params)) // non-owning
+      , data_views_tmp_(Views<HostExecutionSpace, ViewMemoryType::TMP>::create_views_from_tuple(params)) // owning temp space
+      , data_views_device_(Views<DeviceExecutionSpace, ViewMemoryType::OWNING>::create_views_from_tuple(params)) // owning
       , range_lower_(extent.lower)
       , range_upper_(extent.upper)
       , range_policy_host_(HostRangePolicy(extent.lower, extent.upper))
@@ -396,9 +397,8 @@ class Kernel
     DataParamsType data_params_;
     // Note: this has to go first for initialization to function correctly.
     HostDataViewsType data_views_host_;
-    HostDataViewsType data_views_host_tmp_;
-    DeviceDataViewsType data_views_device_;
-    
+    tmpDataViewsType data_views_tmp_;
+    DeviceDataViewsType data_views_device_;    
 
     // Properties pertaining to range policy
     const BoundType range_lower_;
@@ -598,118 +598,17 @@ struct DataGraphNode
 };
 */
 
-// build the DataGraph from chain of Kernels
-// template<typename TupleType>
-// auto build_data_graph (TupleType& kernels)
-template<typename... KernelTypes>
-auto build_data_graph(std::tuple<KernelTypes&...> kernels)
+
+
+struct ExecutionParams
 {
-    using index_pair = std::tuple<size_t, size_t>;
-    using index_map  = std::map<index_pair, index_pair>;
-    size_t null_v    = std::numeric_limits<std::size_t>::max();
-
-    // create an empty inputs and outputs for each
-    index_map inputs;
-    index_map outputs;
-
-    // left kernel
-    iter_tuple(
-      kernels,
-      [&]<typename KernelTypeL>(size_t il, KernelTypeL& kernel_l)
-      {
-          // left data param
-          iter_tuple(
-            kernel_l.data_params_,
-            [&]<typename ParamTypeL>(size_t jl, ParamTypeL& param_l)
-            {
-                bool is_const_l = std::is_const_v<std::remove_reference_t<decltype(param_l)>>;
-
-                // right kernel
-                bool is_match = false;
-                iter_tuple(
-                  kernels,
-                  [&]<typename KernelTypeJ>(size_t ir, KernelTypeJ& kernel_r)
-                  {
-                      if (ir <= il)
-                          return;
-
-                      // right data param
-                      iter_tuple(
-                        kernel_r.data_params_,
-                        [&]<typename ParamTypeR>(size_t jr, ParamTypeR& param_r)
-                        {
-                            bool is_const_r =
-                              std::is_const_v<std::remove_reference_t<decltype(param_r)>>;
-                            // printf("(%d %d %d) (%d %d %d)\n", (int) il, (int) jl, (is_const_l) ?
-                            // 1 : 0, (int) ir, (int) jr, (is_const_r) ? 1 : 0);
-
-                            // match
-                            if ((&param_l == &param_r) && (!is_const_l) && (is_const_r))
-                            {
-                                // printf("param %d in kernel %d depends on param %d in kernel
-                                // %d\n",
-                                //   (int) jr, (int) ir, (int) jl, (int) il);
-                                outputs.emplace(std::make_tuple(il, jl), std::make_tuple(ir, jr));
-                                inputs.emplace(std::make_tuple(ir, jr), std::make_tuple(il, jl));
-                                is_match = true;
-                                return;
-                            }
-                        }); // end jr
-
-                      // found a match for this data param
-                      if (is_match)
-                          return;
-                  }); // end ir
-
-                // found a match for this data param
-                if (is_match)
-                    return;
-
-                // if entry wasn't added yet, map it to null
-                if (is_const_l)
-                { // input
-                    inputs.emplace(std::make_tuple(il, jl), std::make_tuple(null_v, null_v));
-                }
-                else
-                { // output
-                    outputs.emplace(std::make_tuple(il, jl), std::make_tuple(null_v, null_v));
-                }
-            }); // end jl
-      });       // end il
-
-#ifdef NDEBUG
-    printf("\ninputs\n");
-    for (const auto& item : inputs)
-    {
-        const auto& key   = item.first;
-        const auto& value = item.second;
-        std::cout << "Key: (" << std::get<0>(key) << ", " << std::get<1>(key) << "), Value: ("
-                  << std::get<0>(value) << ", " << std::get<1>(value) << ")\n";
-    }
-    printf("\noutputs\n");
-    for (const auto& item : outputs)
-    {
-        const auto& key   = item.first;
-        const auto& value = item.second;
-        std::cout << "Key: (" << std::get<0>(key) << ", " << std::get<1>(key) << "), Value: ("
-                  << std::get<0>(value) << ", " << std::get<1>(value) << ")\n";
-    }
-#endif
-
-    /*
-      // now we have maps of all data param connections!
-
-      // next, loop over kernels and make a node for each kernel
-      //   how to determine number of inputs and outputs for each kernel?
-      //   should I have counted them?
-      //   or should we just use vectors?
-
-      // should outputs will null destinations be automatically copied back to the host?
-    */
+    //DeviceSelector device;
+    ExecutionParams(DeviceSelector device)
+    : device(device)
+    {}
 }
 
 // main algorithm object
-
 template<typename... KernelTypes>
 class Algorithm
 {
@@ -718,6 +617,8 @@ class Algorithm
     constexpr Algorithm(std::tuple<KernelTypes&...> kernels)
       : kernels_(kernels)
     {
+        build_data_graph();
+        
 #ifdef NDEBUG
         iter_tuple(kernels_,
                    []<typename KernelType>(size_t i, KernelType& kernel)
@@ -729,6 +630,11 @@ class Algorithm
     // the core of this class is a tuple of kernels
     std::tuple<KernelTypes&...> kernels_;
 
+    using index_pair = std::tuple<size_t, size_t>;
+    using index_map  = std::map<index_pair, index_pair>;
+    index_map inputs;
+    index_map outputs;
+
     /*
     // call all kernels
     void call()
@@ -738,7 +644,120 @@ class Algorithm
                    { TIMING(kernel, kernel.call()); });
     };
     */
-};
+  private:
+
+    // build the DataGraph from chain of Kernels
+    // template<typename TupleType>
+    // auto build_data_graph (TupleType& kernels)
+    //template<typename... KernelTypes>
+    //void build_data_graph(std::tuple<KernelTypes&...> kernels)
+    void build_data_graph()
+    {
+        //using index_pair = std::tuple<size_t, size_t>;
+        //using index_map  = std::map<index_pair, index_pair>;
+        size_t null_v    = std::numeric_limits<std::size_t>::max();
+
+        // create an empty inputs and outputs for each
+        //index_map inputs;
+        //index_map outputs;
+
+        // left kernel
+        iter_tuple(
+        kernels_,
+        [&]<typename KernelTypeL>(size_t il, KernelTypeL& kernel_l)
+        {
+            // left data param
+            iter_tuple(
+                kernel_l.data_params_,
+                [&]<typename ParamTypeL>(size_t jl, ParamTypeL& param_l)
+                {
+                    bool is_const_l = std::is_const_v<std::remove_reference_t<decltype(param_l)>>;
+
+                    // right kernel
+                    bool is_match = false;
+                    iter_tuple(
+                    kernels_,
+                    [&]<typename KernelTypeJ>(size_t ir, KernelTypeJ& kernel_r)
+                    {
+                        if (ir <= il)
+                            return;
+
+                        // right data param
+                        iter_tuple(
+                            kernel_r.data_params_,
+                            [&]<typename ParamTypeR>(size_t jr, ParamTypeR& param_r)
+                            {
+                                bool is_const_r =
+                                std::is_const_v<std::remove_reference_t<decltype(param_r)>>;
+                                // printf("(%d %d %d) (%d %d %d)\n", (int) il, (int) jl, (is_const_l) ?
+                                // 1 : 0, (int) ir, (int) jr, (is_const_r) ? 1 : 0);
+
+                                // match
+                                if ((&param_l == &param_r) && (!is_const_l) && (is_const_r))
+                                {
+                                    // printf("param %d in kernel %d depends on param %d in kernel
+                                    // %d\n",
+                                    //   (int) jr, (int) ir, (int) jl, (int) il);
+                                    outputs.emplace(std::make_tuple(il, jl), std::make_tuple(ir, jr));
+                                    inputs.emplace(std::make_tuple(ir, jr), std::make_tuple(il, jl));
+                                    is_match = true;
+                                    return;
+                                }
+                            }); // end jr
+
+                        // found a match for this data param
+                        if (is_match)
+                            return;
+                    }); // end ir
+
+                    // found a match for this data param
+                    if (is_match)
+                        return;
+
+                    // if entry wasn't added yet, map it to null
+                    if (is_const_l)
+                    { // input
+                        inputs.emplace(std::make_tuple(il, jl), std::make_tuple(null_v, null_v));
+                    }
+                    else
+                    { // output
+                        outputs.emplace(std::make_tuple(il, jl), std::make_tuple(null_v, null_v));
+                    }
+                }); // end jl
+        });       // end il
+
+    //#ifdef NDEBUG
+        printf("\ninputs\n");
+        for (const auto& item : inputs)
+        {
+            const auto& key   = item.first;
+            const auto& value = item.second;
+            std::cout << "Key: (" << std::get<0>(key) << ", " << std::get<1>(key) << "), Value: ("
+                    << std::get<0>(value) << ", " << std::get<1>(value) << ")\n";
+        }
+        printf("\noutputs\n");
+        for (const auto& item : outputs)
+        {
+            const auto& key   = item.first;
+            const auto& value = item.second;
+            std::cout << "Key: (" << std::get<0>(key) << ", " << std::get<1>(key) << "), Value: ("
+                    << std::get<0>(value) << ", " << std::get<1>(value) << ")\n";
+        }
+    //#endif
+
+        /*
+        // now we have maps of all data param connections!
+
+        // next, loop over kernels and make a node for each kernel
+        //   how to determine number of inputs and outputs for each kernel?
+        //   should I have counted them?
+        //   or should we just use vectors?
+
+        // should outputs will null destinations be automatically copied back to the host?
+        */
+    } // end build_data_graph
+
+}; // end Algorithm
 
 /*
 template<int KernelRank, typename FunctorType, typename ViewsType>
@@ -869,6 +888,7 @@ auto K3(ParameterTypes&... data_params)
   return Kernel<1, FunctorK3, ParameterTypes...>(name, params, extent);
 }
 
+#ifdef USE_EIGEN
 struct FunctorK4
 {
     template<typename ViewsTuple, typename Index>
@@ -891,6 +911,7 @@ auto K4(ParameterTypes&... data_params)
     auto extent     = range_extent({ 0, 0 }, { N, M });
     return Kernel<2, FunctorK4, ParameterTypes...>(name, params, extent);
 }
+#endif
 
 //=============================================================================
 // main
@@ -924,19 +945,34 @@ int main(int argc, char* argv[])
     auto k2 = K2(std::as_const(x), std::as_const(z), w); // vvm
     auto k3 = K3(std::as_const(x), std::as_const(z), q); // vvm
 
+#ifdef USE_EIGEN
+    Eigen::MatrixXd a(N, N);
+    //a.setIdentity();
+    /*{
+      int ij = 0;
+      for (int i=0; i<N; i++)
+        for (int j=0; j<N; j++)
+          a(i,j) = static_cast<double>(ij++);
+    }*/
+    a << 0.0, 1.0, 2.0, 3.0, 4.0,
+         5.0, 6.0, 7.0, 8.0, 9.0,
+         10.0, 11.0, 12.0, 13.0, 14.0,
+         15.0, 16.0, 17.0, 18.0, 19.0,
+         20.0, 21.0, 22.0, 23.0, 24.0;
+    std::vector<double> b(N, 2.0);
+    std::vector<double> c(N, 0.0);
+
+    auto k4 = K4(std::as_const(a), std::as_const(b), c); // mvm
+#endif
+
     // Create an Algorithm object
-    //Algorithm algo(pack(k1, k2, k3));
+#ifdef USE_EIGEN
+    Algorithm algo(pack(k1, k2, k3, k4));
+#else
+    Algorithm algo(pack(k1, k2, k3));
+#endif
     //build_data_graph(algo.kernels_);
-
-    /*
-        Eigen::MatrixXd a(N, N);
-        //a.setRandom();
-        a.setIdentity();
-        std::vector<double> b(N, 2.0);
-        std::vector<double> c(N, 0.0);
-        auto k4 = K4(std::as_const(a), std::as_const(b), c); // mvm
-    */
-
+    
     // At the end, the algorithm needs to know the "final" output that needs copied to the host
     // Data needs moved if 1) it is a kernel input or 2) algorithm output
     // Data view deallocation if 1) it is not a downstream input 2) and not algorithm output
@@ -1040,6 +1076,49 @@ int main(int argc, char* argv[])
         assert(q[i] == x[i]*z[i]*2.0);
       }
     }
+
+#ifdef USE_EIGEN
+    {
+      printf("\nk4\n");
+      auto& k = k4;
+      auto& a_h = std::get<0>(k.data_views_host_);
+      auto& b_h = std::get<1>(k.data_views_host_);
+      auto& c_h = std::get<2>(k.data_views_host_);
+      auto& a_t = std::get<0>(k.data_views_tmp_);
+      auto& b_t = std::get<1>(k.data_views_tmp_);
+      auto& c_t = std::get<2>(k.data_views_tmp_);
+      auto& a_d = std::get<0>(k.data_views_device_);
+      auto& b_d = std::get<1>(k.data_views_device_);
+      auto& c_d = std::get<2>(k.data_views_device_);
+    
+      //copy inputs from host to host tmp space to convert layout, then to device
+      if (device == DeviceSelector::DEVICE) {
+          Kokkos::deep_copy(a_t, a_h); Kokkos::deep_copy(a_d, a_t);
+          Kokkos::deep_copy(b_d, b_h);
+      }
+    
+      // execute the kernel
+      k(device);
+
+      // copy output from device to host tmp space then to host
+      if (device == DeviceSelector::DEVICE) {
+          Kokkos::deep_copy(c_h, c_d);
+      }
+
+      // check outputs
+      for (auto i = 0; i < N; i++) {
+        std::cout << "[" << i << "] ", c[i], " =";
+        double c_ = 0.0;
+        for (auto j = 0; j < N; j++) {
+            if (j > 0) std::cout << " +";
+            std::cout << " (" << a(i,j) << "*" << b[j] << ")";
+            c_ += a(i,j) * b[j];
+        }
+        std::cout << " = " << c_ << " = " << c[i] << std::endl;
+        //assert(c[i] == c_);        
+      }
+    }
+#endif
 
     } // end Kokkos scope
 
