@@ -41,7 +41,7 @@ if [[ "${1}" == "narwhal" ]]; then
 elif [[ "${1}" == "googlecloud" ]]; then
   
   # set home paths
-  export CUDA_HOME=/usr/local/cuda
+  export CUDA_HOME=~/opt/cuda
   export KOKKOS_HOME=~/opt/kokkos
 
   # ensure CUDA is on the path
