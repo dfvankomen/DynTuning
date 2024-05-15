@@ -19,14 +19,14 @@ struct FunctorMVM
 };
 
 template<typename... ParameterTypes>
-inline auto KernelMVM(ParameterTypes&... data_params)
+inline auto KernelMVM(KernelOptions& options, ParameterTypes&... data_params)
 {
     auto name       = "matrix-vector multiply";
     auto params     = pack(data_params...);
     unsigned long N = std::get<0>(params).rows();
     unsigned long M = std::get<0>(params).cols();
     auto extent     = range_extent({ 0, 0 }, { N, M });
-    return Kernel<2, FunctorMVM, ParameterTypes...>(name, params, extent);
+    return Kernel<2, FunctorMVM, ParameterTypes...>(name, params, extent, options);
 }
 
 template<typename KernelType, typename A, typename B, typename C>

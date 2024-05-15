@@ -22,14 +22,12 @@
 int main(int argc, char* argv[])
 {
     DeviceSelector device = set_device(argc, argv);
+    int N = set_N(argc, argv);
 
     // Initialize Kokkos
-    Kokkos::initialize(argc, argv);
+    Kokkos::initialize();
     { // start Kokkos scope
 
-        int N;
-
-        N = 5;
         std::vector<double> x(N);
         std::iota(x.begin(), x.end(), 1.0);
         std::vector<double> y(N);
@@ -38,10 +36,12 @@ int main(int argc, char* argv[])
         std::vector<double> w(N);
         std::vector<double> q(N);
 
-        auto k1 = KernelVVM(std::as_const(x), std::as_const(y), z); // vvm
-        auto k2 = KernelVVM(std::as_const(x), std::as_const(z), w); // vvm
-        auto k3 = KernelVVM(std::as_const(x), std::as_const(z), q); // vvm
+        KernelOptions options = { { DeviceSelector::HOST, DeviceSelector::DEVICE } };
 
+        auto k1 = KernelVVM(options, std::as_const(x), std::as_const(y), z); // vvm
+        auto k2 = KernelVVM(options, std::as_const(x), std::as_const(z), w); // vvm
+        auto k3 = KernelVVM(options, std::as_const(x), std::as_const(z), q); // vvm
+        
         #ifdef USE_EIGEN
             Eigen::MatrixXd a(N, N);
             //a.setIdentity();

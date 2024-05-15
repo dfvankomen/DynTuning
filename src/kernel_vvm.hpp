@@ -19,46 +19,60 @@ struct FunctorVVM
 };
 
 template<typename... ParameterTypes>
-inline auto KernelVVM(ParameterTypes&... data_params)
+inline auto KernelVVM(KernelOptions& options, ParameterTypes&... data_params)
 {
     auto name   = "vector-vector multiply";
     auto params = pack(data_params...);
     auto extent = range_extent(0, std::get<2>(params).size());
-    return Kernel<1, FunctorVVM, ParameterTypes...>(name, params, extent);
+    return Kernel<1, FunctorVVM, ParameterTypes...>(name, params, extent, options);
 }
 
 template<typename KernelType, typename A, typename B, typename C>
-inline void TestVVM(KernelType& k, A& a, B& b, C& c, DeviceSelector device)
+inline void TestVVM(KernelType& k, A& a, B& b, C& c, DeviceSelector device_ = DeviceSelector::AUTO)
 {
-
-    printf("\n%s\n", k.kernel_name_.c_str());
-
-    auto& a_h = std::get<0>(k.data_views_host_);
-    auto& b_h = std::get<1>(k.data_views_host_);
-    auto& c_h = std::get<2>(k.data_views_host_);
-    auto& a_d = std::get<0>(k.data_views_device_);
-    auto& b_d = std::get<1>(k.data_views_device_);
-    auto& c_d = std::get<2>(k.data_views_device_);
-    
-    //copy inputs from host to device
-    if (device == DeviceSelector::DEVICE) {
-        Kokkos::deep_copy(a_d, a_h);
-        Kokkos::deep_copy(b_d, b_h);
-    }
-    
-    // execute the kernel
-    k(device);
-
-    // copy output from device to host
-    if (device == DeviceSelector::DEVICE) {
-        Kokkos::deep_copy(c_h, c_d);
+    std::vector<DeviceSelector> devices;
+    if (device_ != DeviceSelector::AUTO) {
+        devices = { device_ };
+    } else {
+        devices = k.options_.devices;
     }
 
-    // check outputs
-    size_t N = c.size();
-    for (auto i = 0; i < N; i++) {
-        printf("[%d] %f * %f = %f\n", i, a[i], b[i], c[i]);
-        assert(c[i] == a[i] * b[i]);
+    for (DeviceSelector device : devices) {
+
+        printf("\n%s\n", k.kernel_name_.c_str());
+        if (device == DeviceSelector::HOST) {
+            printf("Device = %s\n", "host");
+        } else if (device == DeviceSelector::DEVICE) {
+            printf("Device = %s\n", "device");
+        }
+
+        auto& a_h = std::get<0>(k.data_views_host_);
+        auto& b_h = std::get<1>(k.data_views_host_);
+        auto& c_h = std::get<2>(k.data_views_host_);
+        auto& a_d = std::get<0>(k.data_views_device_);
+        auto& b_d = std::get<1>(k.data_views_device_);
+        auto& c_d = std::get<2>(k.data_views_device_);
+        
+        //copy inputs from host to device
+        if (device == DeviceSelector::DEVICE) {
+            Kokkos::deep_copy(a_d, a_h);
+            Kokkos::deep_copy(b_d, b_h);
+        }
+        
+        // execute the kernel
+        k(device);
+
+        // copy output from device to host
+        if (device == DeviceSelector::DEVICE) {
+            Kokkos::deep_copy(c_h, c_d);
+        }
+
+        // check outputs
+        size_t N = c.size();
+        for (auto i = 0; i < N; i++) {
+            printf("[%d] %f * %f = %f\n", i, a[i], b[i], c[i]);
+            assert(c[i] == a[i] * b[i]);
+        }
     }
 
 }

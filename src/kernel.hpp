@@ -5,6 +5,10 @@
 #include "view.hpp"
 #include "Kokkos_Core.hpp"
 
+struct KernelOptions
+{
+    std::vector<DeviceSelector> devices;
+};
 
 //=============================================================================
 // Kernel
@@ -42,7 +46,8 @@ class Kernel
 
     Kernel(const char* name,
            std::tuple<ParameterTypes&...> params,
-           const RangeExtent<KernelRank>& extent)
+           const RangeExtent<KernelRank>& extent,
+           KernelOptions& options)
       : kernel_name_(std::string(name))
       , data_params_(params)
       //, data_views_device_(Views<DeviceExecutionSpace>::create_views_from_tuple(params))
@@ -56,6 +61,7 @@ class Kernel
       , range_upper_(extent.upper)
       , range_policy_host_(HostRangePolicy(extent.lower, extent.upper))
       , range_policy_device_(DeviceRangePolicy(extent.lower, extent.upper))
+      , options_(options)
     {
 #ifdef NDEBUG
         // debugging diagnostics
@@ -92,6 +98,9 @@ class Kernel
     // tile_type tile_;
     HostRangePolicy range_policy_host_;
     DeviceRangePolicy range_policy_device_;
+
+    // Execution Options
+    KernelOptions& options_;
 };
 
 

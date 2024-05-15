@@ -99,7 +99,6 @@ private:
 
 */
 
-
 // main algorithm object
 template<typename... KernelTypes>
 class Algorithm
@@ -114,13 +113,15 @@ class Algorithm
             dependents.push_back(std::set<size_t>{});
         });
 
-        build_data_graph();
+        build_graph();
 
-#ifdef NDEBUG
+        /*
+        #ifdef NDEBUG
         iter_tuple(kernels_,
                    []<typename KernelType>(size_t i, KernelType& kernel)
                    { printf("Registered Kernel: %s\n", kernel.kernel_name_.c_str()); });
-#endif
+        #endif
+        */
     };
     ~Algorithm() {};
 
@@ -130,10 +131,11 @@ class Algorithm
     // index maps define data dependencies
     using index_pair = std::tuple<size_t, size_t>;
     using index_map  = std::map<index_pair, index_pair>;
-    index_map inputs;
-    index_map outputs;
-    std::vector<std::set<size_t>> depends_on; // for each kernel, a list of kernels it depends on
-    std::vector<std::set<size_t>> dependents; // for each kernel, a list of kernels that depend on it
+    using adjacency_map = std::vector<std::set<size_t>>;
+    index_map     inputs;
+    index_map     outputs;
+    adjacency_map depends_on;
+    adjacency_map dependents;
 
     /*
     // call all kernels
@@ -144,6 +146,7 @@ class Algorithm
                    { TIMING(kernel, kernel.call()); });
     };
     */
+
   private:
 
     enum { UNVISITED, INPROGRESS, VISITED };
@@ -176,9 +179,9 @@ class Algorithm
         for (auto &node : graph)
             node.reset();
         std::vector<size_t> seq;
-        top_search_until(seq);
+        top_search_impl(seq);
     }
-    void top_search_until(std::vector<size_t>& seq)
+    void top_search_impl(std::vector<size_t>& seq)
     {
         for (auto &node : graph) {
             if ((node.indegree == 0) && (node.state == UNVISITED)) {
@@ -186,9 +189,12 @@ class Algorithm
                 for (size_t i : node.next) {
                     Node &child = graph[i];
 
+                    // NOTE: this doesn't work as expected, so we comment it out for now
+                    /*
                     // check for circular dependency
                     if (child.state != UNVISITED)
                         throw std::runtime_error("Circular dependency detected!");
+                    */
 
                     // record edge as visited
                     child.indegree--;
@@ -199,7 +205,7 @@ class Algorithm
                 node.state = VISITED;
 
                 // recurse
-                top_search_until(seq);
+                top_search_impl(seq);
 
                 // store result
                 if (seq.size() == graph.size())
@@ -218,7 +224,7 @@ class Algorithm
     }
     
     // build the DataGraph from chain of Kernels
-    void build_data_graph()
+    void build_graph()
     {
         size_t null_v = std::numeric_limits<std::size_t>::max();
 
@@ -339,21 +345,29 @@ class Algorithm
             std::cout << "\n";
         }
 
-    //#endif
+    } // end build_data_graph
 
-    // need to create DAG
+    void operator() ()
+    {
+        for (auto& seq : sequences) {
+            for (auto il : seq) {
+                auto kl = std::get<il>(kernels_);
+                for (auto ir : seq) {
+                    if (ir <= il) 
+                        continue;
+                    auto kr = std::get<ir>(kernels_);
+                    // START HERE
+                    // among the data dependencies of left kernel
+                    // find the next right kernel
+                    // will get views from that
 
-    // kernel node struct should have
-    //   index of the kernel it refers to
-    //   vector of kernel indexes it depends on
-    //   vector of kernel indexes that depend on it
+                } // end loop over right kernels
+            } // end loop over left kernels
+        } // end loop over sequences
+    }
 
-    // first generate kernel execution order
-    // create a vector of empty vectors the same length as number of kernels
-    // for each kernel, check if it does NOT depend on any other kernel
-    //   if true, then push the index to the same index vector
-    //   if false, then push the index to the vector of
-
+    //START HERE
+    // next data dependency now depends on which sequence you use
     // for each kernel0
     //   for each param0 in the kernel0
     //     determine next view that needs this data
@@ -381,8 +395,6 @@ class Algorithm
     //   thread count
 
     // for each iteration of the algorithm generate a new set of these kernel structs
-
-    } // end build_data_graph
 
 }; // end Algorithm
 

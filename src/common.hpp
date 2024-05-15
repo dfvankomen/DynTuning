@@ -20,6 +20,7 @@
 // device selector options
 enum class DeviceSelector
 {
+    AUTO,
     HOST,
     DEVICE
 };
@@ -64,11 +65,35 @@ iter_tuple(const std::tuple<T...>& t, const LambdaType& lambda)
 
 inline DeviceSelector set_device(int argc, char* argv[])
 {
-    if ((argc > 0) && (strcmp(argv[1], "device") == 0)) {
-        printf("\nRunning on Device\n");
-        return DeviceSelector::DEVICE;
-    } else {
-        printf("\nRunning on Host\n");
-        return DeviceSelector::HOST;
+    DeviceSelector device = DeviceSelector::AUTO;
+    for (int i = 0; i < argc; i++) {
+        std::string arg = argv[i];
+        if (arg.find("--device=") == 0) {
+            arg = arg.substr(9);
+            const char *s = &arg.c_str()[0];
+            if (strcmp(s, "device") == 0) {
+                device = DeviceSelector::DEVICE;
+            } else if (strcmp(s, "host") == 0) {
+                device = DeviceSelector::HOST;
+            }
+            std::cout << "Device = " << arg << std::endl;
+            break;
+        }
     }
+    if (device == DeviceSelector::AUTO)
+        std::cout << "Device = " << "auto" << std::endl;
+    return device;
+}
+
+inline int set_N(int argc, char* argv[])
+{
+    int N = 5;
+    for (int i = 0; i < argc; i++) {
+        std::string arg = argv[i];
+        if (arg.find("--N=") == 0) {
+            N = std::atoi(arg.substr(4).c_str());
+        }
+    }
+    std::cout << "N = " << N << std::endl;
+    return N;
 }
