@@ -29,47 +29,57 @@ inline auto KernelMVM(KernelOptions& options, ParameterTypes&... data_params)
     return Kernel<2, FunctorMVM, ParameterTypes...>(name, params, extent, options);
 }
 
-template<typename KernelType, typename A, typename B, typename C>
-inline void TestMVM(KernelType& k, A& a, B& b, C& c, DeviceSelector device)
+template<typename KernelType>
+inline void TestMVM(KernelType& k)
 {
-    printf("\n%s\n", k.kernel_name_.c_str());
-    
-    auto& a_h = std::get<0>(k.data_views_host_);
-    auto& b_h = std::get<1>(k.data_views_host_);
-    auto& c_h = std::get<2>(k.data_views_host_);
-    auto& a_t = std::get<0>(k.data_views_tmp_);
-    auto& b_t = std::get<1>(k.data_views_tmp_);
-    auto& c_t = std::get<2>(k.data_views_tmp_);
-    auto& a_d = std::get<0>(k.data_views_device_);
-    auto& b_d = std::get<1>(k.data_views_device_);
-    auto& c_d = std::get<2>(k.data_views_device_);
-    
-    //copy inputs from host to host tmp space to convert layout, then to device
-    if (device == DeviceSelector::DEVICE) {
-        Kokkos::deep_copy(a_t, a_h); Kokkos::deep_copy(a_d, a_t);
-        Kokkos::deep_copy(b_d, b_h);
-    }
-    
-    // execute the kernel
-    k(device);
+    auto& a = std::get<0>(k.data_params_);
+    auto& b = std::get<1>(k.data_params_);
+    auto& c = std::get<2>(k.data_params_);
 
-    // copy output from device to host tmp space then to host
-    if (device == DeviceSelector::DEVICE) {
-        Kokkos::deep_copy(c_h, c_d);
-    }
+    std::vector<DeviceSelector> devices = k.options_.devices;
 
-    // check outputs
-    unsigned long N = c.rows();
-    unsigned long M = c.cols();
-    for (auto i = 0; i < N; i++) {
-        std::cout << "[" << i << "] ", c[i], " =";
-        double c_ = 0.0;
-        for (auto j = 0; j < M; j++) {
-            if (j > 0) std::cout << " +";
-            std::cout << " (" << a(i,j) << "*" << b[j] << ")";
-            c_ += a(i,j) * b[j];
+    for (DeviceSelector device : devices) {
+
+        std::cout << "\n" << k.kernel_name_ << "(" << device << ")" << std::endl;
+        
+        auto& a_h = std::get<0>(k.data_views_host_);
+        auto& b_h = std::get<1>(k.data_views_host_);
+        auto& c_h = std::get<2>(k.data_views_host_);
+        auto& a_t = std::get<0>(k.data_views_tmp_);
+        auto& b_t = std::get<1>(k.data_views_tmp_);
+        auto& c_t = std::get<2>(k.data_views_tmp_);
+        auto& a_d = std::get<0>(k.data_views_device_);
+        auto& b_d = std::get<1>(k.data_views_device_);
+        auto& c_d = std::get<2>(k.data_views_device_);
+        
+        //copy inputs from host to host tmp space to convert layout, then to device
+        if (device == DeviceSelector::DEVICE) {
+            Kokkos::deep_copy(a_t, a_h); Kokkos::deep_copy(a_d, a_t);
+            Kokkos::deep_copy(b_d, b_h);
         }
-        std::cout << " = " << c_ << " = " << c[i] << std::endl;
-        //assert(c[i] == c_);        
+        
+        // execute the kernel
+        k(device);
+
+        // copy output from device to host tmp space then to host
+        if (device == DeviceSelector::DEVICE) {
+            Kokkos::deep_copy(c_h, c_d);
+        }
+
+        // check outputs
+        unsigned long N = c.rows();
+        unsigned long M = c.cols();
+        for (auto i = 0; i < N; i++) {
+            std::cout << "[" << i << "] ", c[i], " =";
+            double c_ = 0.0;
+            for (auto j = 0; j < M; j++) {
+                if (j > 0) std::cout << " +";
+                std::cout << " (" << a(i,j) << "*" << b[j] << ")";
+                c_ += a(i,j) * b[j];
+            }
+            std::cout << " = " << c_ << " = " << c[i] << std::endl;
+            //assert(c[i] == c_);        
+        }
+
     }
 }

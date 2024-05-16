@@ -23,10 +23,18 @@ int main(int argc, char* argv[])
 {
     DeviceSelector device = set_device(argc, argv);
     int N = set_N(argc, argv);
+    bool reordering = set_reordering(argc, argv);
 
     // Initialize Kokkos
     Kokkos::initialize();
     { // start Kokkos scope
+
+        // execution options
+        KernelOptions options;
+        if (device != DeviceSelector::AUTO)
+            options = { { device } };
+        else
+            options = { { DeviceSelector::HOST, DeviceSelector::DEVICE } };
 
         std::vector<double> x(N);
         std::iota(x.begin(), x.end(), 1.0);
@@ -35,8 +43,6 @@ int main(int argc, char* argv[])
         std::vector<double> z(N);
         std::vector<double> w(N);
         std::vector<double> q(N);
-
-        KernelOptions options = { { DeviceSelector::HOST, DeviceSelector::DEVICE } };
 
         auto k1 = KernelVVM(options, std::as_const(x), std::as_const(y), z); // vvm
         auto k2 = KernelVVM(options, std::as_const(x), std::as_const(z), w); // vvm
@@ -66,15 +72,16 @@ int main(int argc, char* argv[])
         #ifdef USE_EIGEN
             Algorithm algo(pack(k1, k2, k3, k4));
         #else
-            Algorithm algo(pack(k1, k2, k3));
+            Algorithm algo(pack(k1, k2, k3), reordering);
+            algo();
         #endif
         
         // TESTS
-        TestVVM(k1, x, y, z, device);
-        TestVVM(k2, x, z, w, device);
-        TestVVM(k3, x, z, q, device);
+        TestVVM(k1);
+        TestVVM(k2);
+        TestVVM(k3);
         #ifdef USE_EIGEN
-            TestMVM(k4, a, b, c, device);
+            TestMVM(k4);
         #endif
 
     } // end Kokkos scope

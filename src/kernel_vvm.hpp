@@ -27,24 +27,19 @@ inline auto KernelVVM(KernelOptions& options, ParameterTypes&... data_params)
     return Kernel<1, FunctorVVM, ParameterTypes...>(name, params, extent, options);
 }
 
-template<typename KernelType, typename A, typename B, typename C>
-inline void TestVVM(KernelType& k, A& a, B& b, C& c, DeviceSelector device_ = DeviceSelector::AUTO)
+template<typename KernelType>
+inline void TestVVM(KernelType& k)
 {
-    std::vector<DeviceSelector> devices;
-    if (device_ != DeviceSelector::AUTO) {
-        devices = { device_ };
-    } else {
-        devices = k.options_.devices;
-    }
+
+    auto& a = std::get<0>(k.data_params_);
+    auto& b = std::get<1>(k.data_params_);
+    auto& c = std::get<2>(k.data_params_);
+
+    std::vector<DeviceSelector> devices = k.options_.devices;
 
     for (DeviceSelector device : devices) {
 
-        printf("\n%s\n", k.kernel_name_.c_str());
-        if (device == DeviceSelector::HOST) {
-            printf("Device = %s\n", "host");
-        } else if (device == DeviceSelector::DEVICE) {
-            printf("Device = %s\n", "device");
-        }
+        std::cout << "\n" << k.kernel_name_ << "(" << device << ")" << std::endl;
 
         auto& a_h = std::get<0>(k.data_views_host_);
         auto& b_h = std::get<1>(k.data_views_host_);

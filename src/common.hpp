@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <numeric>
+#include <map>
 
 #ifdef USE_EIGEN
 #include "Eigen"
@@ -24,6 +25,15 @@ enum class DeviceSelector
     HOST,
     DEVICE
 };
+
+inline std::ostream& operator<<(std::ostream& out, const DeviceSelector value)
+{
+    std::map<DeviceSelector, std::string> m;
+    m[DeviceSelector::AUTO]   = "a";
+    m[DeviceSelector::HOST]   = "h";
+    m[DeviceSelector::DEVICE] = "d";
+    return out << m[value];
+}
 
 /*
 // simple macro for timing a function
@@ -63,6 +73,23 @@ iter_tuple(const std::tuple<T...>& t, const LambdaType& lambda)
     iter_tuple<LambdaType, I + 1, T...>(t, lambda);
 }
 
+/*
+// utility function for getting the ith item of a tuple
+template<std::size_t I = 0, typename... T>
+inline typename std::enable_if<I == sizeof...(T), void>::type
+get_tuple_item(int i, const std::tuple<T...>& t) {}
+template<std::size_t I = 0, typename... T>
+inline typename std::enable_if<I < sizeof...(T), void>::type
+get_tuple_item(int i, const std::tuple<T...>& t)
+{
+    if (i == I)
+        return std::get<I>(t);
+    else
+        return get_tuple_item<I + 1, T...>(i, t);
+}
+*/
+
+
 inline DeviceSelector set_device(int argc, char* argv[])
 {
     DeviceSelector device = DeviceSelector::AUTO;
@@ -76,12 +103,12 @@ inline DeviceSelector set_device(int argc, char* argv[])
             } else if (strcmp(s, "host") == 0) {
                 device = DeviceSelector::HOST;
             }
-            std::cout << "Device = " << arg << std::endl;
+            std::cout << "device = " << arg << std::endl;
             break;
         }
     }
     if (device == DeviceSelector::AUTO)
-        std::cout << "Device = " << "auto" << std::endl;
+        std::cout << "device = " << "auto" << std::endl;
     return device;
 }
 
@@ -92,8 +119,24 @@ inline int set_N(int argc, char* argv[])
         std::string arg = argv[i];
         if (arg.find("--N=") == 0) {
             N = std::atoi(arg.substr(4).c_str());
+            break;
         }
     }
     std::cout << "N = " << N << std::endl;
     return N;
+}
+
+inline bool set_reordering(int argc, char* argv[])
+{
+    bool flag = false;
+    for (int i = 0; i < argc; i++) {
+        std::string arg = argv[i];
+        if (arg.find("--reordering") == 0) {
+            flag = true;
+            break;
+        }
+    }
+    std::string s(flag ? "true" : "false");
+    std::cout << "reordering = " << s << std::endl;
+    return flag;
 }
