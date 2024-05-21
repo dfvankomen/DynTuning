@@ -19,34 +19,56 @@ struct FunctorVVM
 };
 
 template<typename... ParameterTypes>
-inline auto KernelVVM(KernelOptions& options, ParameterTypes&... data_params)
+inline auto KernelVVM(KernelOptions& options, ParameterTypes&... data_views)
 {
     auto name   = "vector-vector multiply";
-    auto params = pack(data_params...);
-    auto extent = range_extent(0, std::get<2>(params).size());
-    return Kernel<1, FunctorVVM, ParameterTypes...>(name, params, extent, options);
+
+    // transpose the views tuple
+    auto views_ = pack(data_views...);
+    auto views = std::make_tuple(
+        std::make_tuple(
+            std::get<0>(std::get<0>(views_)),
+            std::get<0>(std::get<1>(views_)),
+            std::get<0>(std::get<2>(views_))
+        ),
+        std::make_tuple(
+            std::get<1>(std::get<0>(views_)),
+            std::get<1>(std::get<1>(views_)),
+            std::get<1>(std::get<2>(views_))
+        ),
+        std::make_tuple(
+            std::get<2>(std::get<0>(views_)),
+            std::get<2>(std::get<1>(views_)),
+            std::get<2>(std::get<2>(views_))
+        )
+    );
+
+    // set the extent based on the host view of the output
+    auto out    = std::get<2>(std::get<0>(views));
+    auto extent = range_extent(0, out.extent(0));
+
+    // create the kernel
+    return Kernel<1, FunctorVVM, decltype(views)>(
+        name, views, extent, options
+    );
 }
 
 template<typename KernelType>
-inline void TestVVM(KernelType& k)
+inline void TestVVM(KernelType& k, std::vector<double>& a, std::vector<double>& b, std::vector<double>& c)
 {
-
-    auto& a = std::get<0>(k.data_params_);
-    auto& b = std::get<1>(k.data_params_);
-    auto& c = std::get<2>(k.data_params_);
-
     std::vector<DeviceSelector> devices = k.options_.devices;
 
     for (DeviceSelector device : devices) {
 
-        std::cout << "\n" << k.kernel_name_ << "(" << device << ")" << std::endl;
+        std::cout << "\n" << k.kernel_name_ << " (" << device << ")" << std::endl;
 
-        auto& a_h = std::get<0>(k.data_views_host_);
-        auto& b_h = std::get<1>(k.data_views_host_);
-        auto& c_h = std::get<2>(k.data_views_host_);
-        auto& a_d = std::get<0>(k.data_views_device_);
-        auto& b_d = std::get<1>(k.data_views_device_);
-        auto& c_d = std::get<2>(k.data_views_device_);
+        auto& a_h = std::get<0>(std::get<0>(k.data_views_));
+        auto& b_h = std::get<0>(std::get<1>(k.data_views_));
+        auto& c_h = std::get<0>(std::get<2>(k.data_views_));
+
+        auto& a_d = std::get<1>(std::get<0>(k.data_views_));
+        auto& b_d = std::get<1>(std::get<1>(k.data_views_));
+        auto& c_d = std::get<1>(std::get<2>(k.data_views_));
         
         //copy inputs from host to device
         if (device == DeviceSelector::DEVICE) {

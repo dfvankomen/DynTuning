@@ -2,6 +2,9 @@
 
 #include "Kokkos_Core.hpp"
 
+using HostExecutionSpace   = Kokkos::KOKKOS_HOST;
+using DeviceExecutionSpace = Kokkos::KOKKOS_DEVICE;
+
 // view memory type options
 enum class ViewMemoryType
 {
@@ -9,6 +12,22 @@ enum class ViewMemoryType
     TMP,
     OWNING
 };
+
+// space
+using HostViewSpace     = HostExecutionSpace;
+using DeviceViewSpace   = DeviceExecutionSpace;
+using ScratchViewSpace  = HostViewSpace;
+
+// layout
+using HostViewLayout    = typename HostExecutionSpace::array_layout;
+using DeviceViewLayout  = Kokkos::LayoutLeft;
+using ScratchViewLayout = DeviceViewLayout;
+
+// generator
+template<typename ExecutionSpace, ViewMemoryType MemoryType> struct Views;
+using HostViewGenerator    = Views<HostViewSpace,    ViewMemoryType::NONOWNING>;
+using DeviceViewGenerator  = Views<DeviceViewSpace,  ViewMemoryType::OWNING>;
+using ScratchViewGenerator = Views<ScratchViewSpace, ViewMemoryType::TMP>;
 
 //=============================================================================
 // Specializations
@@ -166,4 +185,37 @@ struct Views
                                    std::make_index_sequence<sizeof...(ParameterTypes)> {});
     }
 
+};
+
+
+template <typename T>
+inline static auto create_views_inner_tuple(T& arg)
+{
+    // don't need scratch views when the host and device layouts are already the same
+    return std::make_tuple(HostViewGenerator::create_view(arg),
+                           DeviceViewGenerator::create_view(arg),
+                           ScratchViewGenerator::create_view(arg));
+
+}
+template<typename Tp, std::size_t... I>
+inline static auto create_views_outer_tuple(const Tp& t, std::integer_sequence<std::size_t, I...>)
+{
+    return std::make_tuple(create_views_inner_tuple(std::get<I>(t))...);
+}
+template<typename... T>
+inline static auto create_views(std::tuple<T...> t)
+{
+    return create_views_outer_tuple(t, std::make_index_sequence<sizeof...(T)> {});
+}
+
+// utility function to return the type of a complex nested tuple
+template <typename... T>
+struct get_views_outer_tuple_type {
+    using type = decltype(create_views(std::make_tuple(std::declval<T>()...)));
+};
+
+// utility function to return the type of views tuple
+template <typename T>
+struct get_views_inner_tuple_type {
+    using type = decltype(create_views_inner_tuple(std::declval<T>()));
 };

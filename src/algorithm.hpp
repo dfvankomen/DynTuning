@@ -482,6 +482,31 @@ class Algorithm
 public:
     void operator() ()
     {
+        for (std::vector<KernelExecutor> kernel_chain : kernel_chains) {
+            double elapsed = 0.0;
+            Kokkos::Timer timer;
+            
+            bool first = true;
+            for (KernelExecutor ke : kernel_chain) {
+                iter_tuple(kernels_, [&]<typename KernelType>(size_t i, KernelType& k)
+                {
+                    if (i == ke.kernel_id) { // found this kernel
+                        
+                        // copy inputs to device if required
+
+                        // execute
+                        k(ke.device);
+
+                        // copy data
+                        //break;
+                    }
+                });
+
+            }
+            //timer.reset();
+            //double kernel_time = timer.seconds();
+
+        }
         //loop over kernel_chains
         //for each chain
         //  start timer

@@ -14,7 +14,8 @@ struct KernelOptions
 // Kernel
 //=============================================================================
 
-template<int KernelRank, class FunctorType, typename... ParameterTypes>
+//template<int KernelRank, class FunctorType, typename... ParameterTypes>
+template<int KernelRank, class FunctorType, typename DataViewsType>
 class Kernel
 {
   public:
@@ -24,10 +25,10 @@ class Kernel
     using HostExecutionSpace   = Kokkos::KOKKOS_HOST;
     using DeviceExecutionSpace = Kokkos::KOKKOS_DEVICE;
     using BoundType            = RangeExtent<KernelRank>::value_type;
-    using DataTuple            = std::tuple<ParameterTypes&...>;
+    //using DataTuple            = std::tuple<ParameterTypes&...>;
     using HostRangePolicy      = typename RangePolicy<KernelRank, HostExecutionSpace>::type;
     using DeviceRangePolicy    = typename RangePolicy<KernelRank, DeviceExecutionSpace>::type;
-    using DataParamsType       = std::tuple<ParameterTypes&...>;
+    //using DataParamsType       = std::tuple<ParameterTypes&...>;
     
     //using DeviceDataViewsType =
     //  std::tuple<typename EquivalentView<DeviceExecutionSpace, ParameterTypes>::type...>;
@@ -35,28 +36,31 @@ class Kernel
     //  typename EquivalentView<DeviceExecutionSpace, ParameterTypes>::type::HostMirror...>;
     
     // START HERE, how do we set this type at compile time when both the layout and param type will vary?
-    using HostDataViewsType = 
-        std::tuple<typename EquivalentView<HostExecutionSpace, HostExecutionSpace::array_layout, ParameterTypes>::type...>;
-    using tmpDataViewsType = 
-        std::tuple<typename EquivalentView<HostExecutionSpace, Kokkos::LayoutLeft, ParameterTypes>::type...>;
-    using DeviceDataViewsType =
-        std::tuple<typename EquivalentView<DeviceExecutionSpace, Kokkos::LayoutLeft, ParameterTypes>::type...>;
-    
-    using tmptype = Views<HostExecutionSpace, ViewMemoryType::NONOWNING>;
+    //using HostDataViewsType = 
+    //    std::tuple<typename EquivalentView<HostExecutionSpace, HostExecutionSpace::array_layout, ParameterTypes>::type...>;
+    //using tmpDataViewsType = 
+    //    std::tuple<typename EquivalentView<HostExecutionSpace, Kokkos::LayoutLeft, ParameterTypes>::type...>;
+    //using DeviceDataViewsType =
+    //    std::tuple<typename EquivalentView<DeviceExecutionSpace, Kokkos::LayoutLeft, ParameterTypes>::type...>;
+    //
+    //using tmptype = Views<HostExecutionSpace, ViewMemoryType::NONOWNING>;
 
+    //using DataViewsType = std::tuple<ParameterTypes&...>;
+    
     Kernel(const char* name,
-           std::tuple<ParameterTypes&...> params,
+           DataViewsType views,
            const RangeExtent<KernelRank>& extent,
            KernelOptions& options)
       : kernel_name_(std::string(name))
-      , data_params_(params)
+      , data_views_(views)
+      //, data_params_(params)
       //, data_views_device_(Views<DeviceExecutionSpace>::create_views_from_tuple(params))
       //, data_views_host_(
       //    Views<DeviceExecutionSpace>::create_mirror_views_from_tuple(data_views_device_))
       //, data_views_host_(Views<HostExecutionSpace, ViewMemoryType::NONOWNING>::create_views_from_tuple(params)) // non-owning
-      , data_views_host_(tmptype::create_views_from_tuple(params)) // non-owning
-      , data_views_tmp_(Views<HostExecutionSpace, ViewMemoryType::TMP>::create_views_from_tuple(params)) // owning temp space
-      , data_views_device_(Views<DeviceExecutionSpace, ViewMemoryType::OWNING>::create_views_from_tuple(params)) // owning
+      //, data_views_host_(tmptype::create_views_from_tuple(params)) // non-owning
+      //, data_views_tmp_(Views<HostExecutionSpace, ViewMemoryType::TMP>::create_views_from_tuple(params)) // owning temp space
+      //, data_views_device_(Views<DeviceExecutionSpace, ViewMemoryType::OWNING>::create_views_from_tuple(params)) // owning
       , range_lower_(extent.lower)
       , range_upper_(extent.upper)
       , range_policy_host_(HostRangePolicy(extent.lower, extent.upper))
@@ -84,13 +88,15 @@ class Kernel
     // The kernel code that will be called in an executation on the respective views
     FunctorType kernel_functor_;
 
+    DataViewsType data_views_;
+
     // Data parameters and views thereof (in the execution spaces that will be considered)
-    DataParamsType data_params_;
+    //DataParamsType data_params_;
     
     // Note: this has to go first for initialization to function correctly.
-    HostDataViewsType data_views_host_;
-    tmpDataViewsType data_views_tmp_;
-    DeviceDataViewsType data_views_device_;    
+    //HostDataViewsType data_views_host_;
+    //tmpDataViewsType data_views_tmp_;
+    //DeviceDataViewsType data_views_device_;    
 
     // Properties pertaining to range policy
     const BoundType range_lower_;
@@ -138,14 +144,14 @@ inline void call_kernel(KernelType& k, DeviceSelector device_selector)
     {
         call_kernel<KernelType::rank>(k.kernel_name_,
                                       k.range_policy_host_,
-                                      k.data_views_host_,
+                                      std::get<0>(k.data_views_),
                                       k.kernel_functor_);
     }
     else if (device_selector == DeviceSelector::DEVICE)
     {
         call_kernel<KernelType::rank>(k.kernel_name_,
                                       k.range_policy_device_,
-                                      k.data_views_device_,
+                                      std::get<1>(k.data_views_),
                                       k.kernel_functor_);
     }
 }
