@@ -15,7 +15,7 @@ struct KernelOptions
 //=============================================================================
 
 //template<int KernelRank, class FunctorType, typename... ParameterTypes>
-template<int KernelRank, class FunctorType, typename DataViewsType>
+template<int KernelRank, class FunctorType, typename DataViewsType, typename IsConstTupleType>
 class Kernel
 {
   public:
@@ -49,10 +49,12 @@ class Kernel
     
     Kernel(const char* name,
            DataViewsType views,
+           IsConstTupleType is_const,
            const RangeExtent<KernelRank>& extent,
            KernelOptions& options)
       : kernel_name_(std::string(name))
       , data_views_(views)
+      , is_const_(is_const)
       //, data_params_(params)
       //, data_views_device_(Views<DeviceExecutionSpace>::create_views_from_tuple(params))
       //, data_views_host_(
@@ -89,6 +91,7 @@ class Kernel
     FunctorType kernel_functor_;
 
     DataViewsType data_views_;
+    IsConstTupleType is_const_;
 
     // Data parameters and views thereof (in the execution spaces that will be considered)
     //DataParamsType data_params_;

@@ -56,6 +56,7 @@ int main(int argc, char* argv[])
         std::vector<double> z(N);
         std::vector<double> w(N);
         std::vector<double> q(N);
+        std::vector<double> a(N);
         //#ifdef USE_EIGEN
         //Eigen::MatrixXd a(N, N);
         ////a.setIdentity();
@@ -86,19 +87,26 @@ int main(int argc, char* argv[])
             HashedName<hash("y")>(),
             HashedName<hash("z")>(),
             HashedName<hash("w")>(),
-            HashedName<hash("q")>()
+            HashedName<hash("q")>(),
+            HashedName<hash("a")>()
         );
-        init_data_views(x, y, z, w, q);
+        init_data_views(x, y, z, w, q, a);
         auto& x_views = get_data_view("x");
         auto& y_views = get_data_view("y");
         auto& z_views = get_data_view("z");
         auto& w_views = get_data_view("w");
         auto& q_views = get_data_view("q");
+        auto& a_views = get_data_view("a");
+
+//bool is_const_1 = std::is_const_v<std::remove_reference_t<decltype(x_views)>>;
+//bool is_const_2 = std::is_const_v<std::remove_reference_t<decltype(std::as_const(x_views))>>;
+//printf("DEBUG: %d %d\n", static_cast<int>(is_const_1), static_cast<int>(is_const_2));
 
         // define all kernels
         auto k1 = KernelVVM(options, std::as_const(x_views), std::as_const(y_views), z_views); // vvm
-//        auto k2 = KernelVVM(options, std::as_const(x), std::as_const(z), w); // vvm
-//        auto k3 = KernelVVM(options, std::as_const(x), std::as_const(z), q); // vvm
+        auto k2 = KernelVVM(options, std::as_const(x_views), std::as_const(z_views), w_views); // vvm
+        auto k3 = KernelVVM(options, std::as_const(x_views), std::as_const(z_views), q_views); // vvm
+        auto k4 = KernelVVM(options, std::as_const(x_views), std::as_const(y_views), a_views); // vvm
         //#ifdef USE_EIGEN
         //auto k4 = KernelMVM(std::as_const(a), std::as_const(b), c); // mvm
         //#endif
@@ -107,16 +115,17 @@ int main(int argc, char* argv[])
         //#ifdef USE_EIGEN
         //Algorithm algo(pack(k1, k2, k3, k4), reordering);
         //#else
-//        Algorithm algo(pack(k1, k2, k3), reordering);
+        auto kernels = pack(k1, k2, k3);
+        Algorithm algo(kernels, data_views, reordering);
         //#endif
 
         // run the algorithm
-//        algo();
+        algo();
 
         // TESTS
-        TestVVM(k1, x, y, z);
-//        TestVVM(k2);
-//        TestVVM(k3);
+//        TestVVM(k1, x, y, z);
+//        TestVVM(k2, x, z, w);
+//        TestVVM(k3, x, z, q);
         //#ifdef USE_EIGEN
         //TestMVM(k4);
         //#endif

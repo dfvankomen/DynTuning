@@ -18,38 +18,69 @@ struct FunctorVVM
     }
 };
 
+template<typename... T>
+inline auto kernel_io_map(T&... args)
+{
+    return std::make_tuple(static_cast<bool>(std::is_const_v<std::remove_reference_t<decltype(args)>>)...);
+}
+
+template <typename T>
+inline auto to_const_ref(T& arg, bool flag, int i, int j)
+{
+    if (flag) {
+        printf("const! %d %d %d\n", i, j, flag);
+        return std::as_const(arg);
+    } else {
+        printf("nonconst %d %d %d\n", i, j, flag);
+        return arg;
+    }
+}
+
+#define get_v(i, j, tuple) std::get<j>(std::get<i>(tuple))
+
 template<typename... ParameterTypes>
 inline auto KernelVVM(KernelOptions& options, ParameterTypes&... data_views)
 {
     auto name   = "vector-vector multiply";
 
+    auto is_const = kernel_io_map(data_views...);
+//printf("DEBUG: %d %d %d\n", std::get<0>(is_const), std::get<1>(is_const), std::get<2>(is_const));
+
+    // WARNING, remapping loses const! Fix this later...
+
     // transpose the views tuple
+    // views_: i = variable, j = device
+    // views:  i = device, j = variable
     auto views_ = pack(data_views...);
     auto views = std::make_tuple(
         std::make_tuple(
-            std::get<0>(std::get<0>(views_)),
-            std::get<0>(std::get<1>(views_)),
-            std::get<0>(std::get<2>(views_))
+            get_v(0, 0, views_),
+            get_v(1, 0, views_),
+            get_v(2, 0, views_)
         ),
         std::make_tuple(
-            std::get<1>(std::get<0>(views_)),
-            std::get<1>(std::get<1>(views_)),
-            std::get<1>(std::get<2>(views_))
+            get_v(0, 1, views_),
+            get_v(1, 1, views_),
+            get_v(2, 1, views_)
         ),
         std::make_tuple(
-            std::get<2>(std::get<0>(views_)),
-            std::get<2>(std::get<1>(views_)),
-            std::get<2>(std::get<2>(views_))
+            get_v(0, 2, views_),
+            get_v(1, 2, views_),
+            get_v(2, 2, views_)
         )
     );
+
+//bool is_const_1 = std::is_const_v<std::remove_reference_t<decltype(std::get<0>(views))>>;
+//bool is_const_2 = std::is_const_v<std::remove_reference_t<decltype(std::get<1>(std::get<0>(views)))>>;
+//printf("DEBUG: %d %d\n", static_cast<int>(is_const_1), static_cast<int>(is_const_2));
 
     // set the extent based on the host view of the output
     auto out    = std::get<2>(std::get<0>(views));
     auto extent = range_extent(0, out.extent(0));
 
     // create the kernel
-    return Kernel<1, FunctorVVM, decltype(views)>(
-        name, views, extent, options
+    return Kernel<1, FunctorVVM, decltype(views), decltype(is_const)>(
+        name, views, is_const, extent, options
     );
 }
 

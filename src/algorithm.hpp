@@ -15,13 +15,14 @@
 // assert(&std::get<1>(k.parameters) == &std::get<0>(k2.parameters));
 
 // main algorithm object
-template<typename... KernelTypes>
+template<typename KernelsTuple, typename ViewsTuple>
 class Algorithm
 {
   public:
     // constructor should initialize and empty vector
-    constexpr Algorithm(std::tuple<KernelTypes&...> kernels, bool reordering = false)
+    constexpr Algorithm(KernelsTuple kernels, ViewsTuple views, bool reordering = false)
       : kernels_(kernels)
+      , views_(views)
       , reordering_(reordering)
     {
         iter_tuple(kernels_, [&]<typename KernelType>(size_t i, KernelType& k) {
@@ -42,13 +43,16 @@ class Algorithm
     ~Algorithm() {};
 
     // the core of this class is a tuple of kernels
-    std::tuple<KernelTypes&...> kernels_;
+    KernelsTuple kernels_;
 
-    // options for devices to run on
-    std::vector<std::vector<DeviceSelector>> devices;
+    // algorithm is reponsible for shuttling data
+    ViewsTuple views_;
 
     // allow reordering
     bool reordering_;
+
+    // available options for devices to run on
+    std::vector<std::vector<DeviceSelector>> devices;
 
     // index maps define data dependencies
     using index_pair = std::tuple<size_t, size_t>;
@@ -130,29 +134,50 @@ class Algorithm
         return result;
     }
 
-    struct KernelExecutor
+    struct KernelSelector
     {
-        size_t kernel_id;
-        DeviceSelector device;
-        std::vector<DeviceSelector> to_device   = std::vector<DeviceSelector>();
+        //kernel
+        size_t         kernel_id;     // index of the kernel in the original tuple
+        DeviceSelector kernel_device; // device this kernel will run on
+
+        //data
+        std::vector<size_t>         input_id      = std::vector<size_t>();
+        std::vector<size_t>         output_id     = std::vector<size_t>();
+        std::vector<DeviceSelector> output_device = std::vector<DeviceSelector>();
     };
 
   public:
 
     // data dependencies define kernel dependencies
     std::vector<Node> graph;
-    std::vector<std::vector<size_t>> sequences;
-    std::vector<std::vector<KernelExecutor>> kernel_chains;
+    
+    // valid sequences of kernels, assuming they must run one-at-a-time
+    // outer index yields a valid sequence
+    // inner index yields a kernel in that sequence
+    std::vector<std::vector<size_t>> kernel_sequences;
+
+    // valid concurrent streams of kernels
+    // different streams could be scheduled at the same time
+    // kernels within a stream must execute sequentially
+    // outer index yields an indpendent stream
+    // inner index yields a kernel in that stream
+    std::vector<std::vector<size_t>> kernel_streams;
+
+    // these are the queues of operations the algorithm will actually execute
+    // NOTE right now we always assume kernels are executed in a sequence
+    //   however, in the future this could be expanded to allow concurrency of independent subchains
+    std::vector<std::vector<KernelSelector>> kernel_chains;
+    std::vector<double> chain_times = std::vector<double>();
 
   private:
     // topological search to ensure the graph is acyclic
     void top_search() {
         for (auto &node : graph)
             node.reset();
-        std::vector<size_t> seq;
-        top_search_impl(seq);
+        std::vector<size_t> kseq;
+        top_search_impl(kseq);
     }
-    void top_search_impl(std::vector<size_t>& seq)
+    void top_search_impl(std::vector<size_t>& kseq)
     {
         for (auto &node : graph) {
             if ((node.indegree == 0) && (node.state == UNVISITED)) {
@@ -172,17 +197,17 @@ class Algorithm
                 }
 
                 // append to result
-                seq.push_back(node.i);
+                kseq.push_back(node.i);
                 node.state = VISITED;
 
                 // recurse
-                top_search_impl(seq);
-                if ((!reordering_) && (sequences.size() == 1))
+                top_search_impl(kseq);
+                if ((!reordering_) && (kernel_sequences.size() == 1))
                     return;
 
                 // store result
-                if (seq.size() == graph.size()) {
-                    sequences.push_back(seq);
+                if (kseq.size() == graph.size()) {
+                    kernel_sequences.push_back(kseq);
 
                     // if no reordering, then just need first sequence
                     if (!reordering_)
@@ -190,7 +215,7 @@ class Algorithm
                 }
 
                 // backtrack
-                seq.erase(seq.end()-1);
+                kseq.erase(kseq.end()-1);
                 node.state = UNVISITED;
                 for (size_t i : node.next) {
                     Node &child = graph[i];
@@ -201,94 +226,95 @@ class Algorithm
         } // end loop over nodes
     }
     
+    //NOTE
+    // the iter_tuple construct is a workaround to access tuple elements with a runtime index
+    // the variant idiom has similar limitations, see
+    //https://stackoverflow.com/questions/52088928/trying-to-return-the-value-from-stdvariant-using-stdvisit-and-a-lambda-expre
+
     // build the DataGraph from chain of Kernels
     void build_graph()
     {
         size_t null_v = std::numeric_limits<std::size_t>::max();
 
-        // left kernel
-        iter_tuple(
-        kernels_,
-        [&]<typename KernelTypeL>(size_t il, KernelTypeL& kernel_l)
-        {
-            // left data param
-            iter_tuple(
-                kernel_l.data_params_,
-                [&]<typename ParamTypeL>(size_t jl, ParamTypeL& param_l)
-                {
-                    bool is_const_l = std::is_const_v<std::remove_reference_t<decltype(param_l)>>;
+        // 0: loop over left kernel
+        iter_tuple(kernels_, [&]<typename KernelTypeL>(size_t il, KernelTypeL& kernel_l)
+        { // kernel_l
 
-                    // right kernel
+            // 1: loop over left data views
+            iter_tuple(std::get<0>(kernel_l.data_views_), [&]<typename ViewTypeL>(size_t jl, ViewTypeL& view_l)
+            { // view_l
+
+                // 2: check is_const for jlth data view
+                iter_tuple(kernel_l.is_const_, [&](size_t _jl, bool is_const_l) { if (_jl == jl)
+                { // is_const_l
+                    //bool is_const_l = false;
+
                     bool is_match = false;
-                    iter_tuple(
-                    kernels_,
-                    [&]<typename KernelTypeJ>(size_t ir, KernelTypeJ& kernel_r)
-                    {
-                        if (ir <= il)
-                            return;
 
-                        // right data param
-                        iter_tuple(
-                            kernel_r.data_params_,
-                            [&]<typename ParamTypeR>(size_t jr, ParamTypeR& param_r)
-                            {
-                                bool is_const_r =
-                                std::is_const_v<std::remove_reference_t<decltype(param_r)>>;
-                                // printf("(%d %d %d) (%d %d %d)\n", (int) il, (int) jl, (is_const_l) ?
-                                // 1 : 0, (int) ir, (int) jr, (is_const_r) ? 1 : 0);
+                    // 3: loop over right kernels
+                    iter_tuple(kernels_, [&]<typename KernelTypeJ>(size_t ir, KernelTypeJ& kernel_r)
+                    { // kernel_r
 
-                                // match
-                                if ((&param_l == &param_r) && (!is_const_l) && (is_const_r))
+                        // only look at kernels to the right
+                        if (ir <= il) return;
+
+                        // 4: loop over right data views
+                        iter_tuple(std::get<0>(kernel_r.data_views_), [&]<typename ViewTypeR>(size_t jr, ViewTypeR& view_r)
+                        { // view_r
+
+                            // 5: check is_const for jrth data view
+                            iter_tuple(kernel_r.is_const_, [&](size_t _jr, bool is_const_r) { if (_jr == jr)
+                            { // is_const_r
+                                //bool is_const_r = false;
+
+                                // check if there is a data dependency between these views
+                                if ((view_l.data() == view_r.data()) && (!is_const_l) && (is_const_r))
                                 {
-                                    // printf("param %d in kernel %d depends on param %d in kernel
-                                    // %d\n",
-                                    //   (int) jr, (int) ir, (int) jl, (int) il);
+                                    // view_r depends on view_l
                                     outputs.emplace(std::make_tuple(il, jl), std::make_tuple(ir, jr));
                                     inputs.emplace(std::make_tuple(ir, jr), std::make_tuple(il, jl));
 
-                                    //kernel ir depends on kernel il
+                                    //kernel_r depends on kernel_l
                                     depends_on[ir].insert(il);
                                     dependents[il].insert(ir);
 
                                     is_match = true;
                                     return;
                                 }
-                            }); // end jr
+                                
+                            }}); // is_const_r
+                            if (is_match) return;
 
-                        // found a match for this data param
-                        if (is_match)
-                            return;
-                    }); // end ir
+                        }); // view_r
+                        if (is_match) return;
 
-                    // found a match for this data param
-                    if (is_match)
-                        return;
+                    }); // kernel_r
+                    if (is_match) return;
 
                     // if entry wasn't added yet, map it to null
-                    if (is_const_l)
-                    { // input
+                    if (is_const_l) { // input
                         inputs.emplace(std::make_tuple(il, jl), std::make_tuple(null_v, null_v));
-                    }
-                    else
-                    { // output
+                    } else { // output
                         outputs.emplace(std::make_tuple(il, jl), std::make_tuple(null_v, null_v));
                     }
-                }); // end jl
-        });       // end il
+
+                }}); // is_const_l, is_match
+
+            }); // view_l
+
+        }); // kernel_l
 
         printf("\ninputs\n");
         for (const auto& item : inputs)
         {
-            const auto& key   = item.first;
-            //const auto& value = item.second;
+            const auto& key = item.first;
             std::cout << "(" << std::get<0>(key) << ", " << std::get<1>(key) << ")\n";
         }
 
         printf("\noutputs\n");
         for (const auto& item : outputs)
         {
-            const auto& key   = item.first;
-            //const auto& value = item.second;
+            const auto& key = item.first;
             std::cout << "(" << std::get<0>(key) << ", " << std::get<1>(key) << ")\n";
         }
 
@@ -298,8 +324,16 @@ class Algorithm
             const auto& key   = item.first;
             const auto& value = item.second;
             if ((std::get<0>(value) != null_v) && (std::get<1>(value) != null_v))
-                std::cout << "(" << std::get<0>(value) << ", " << std::get<1>(value) << ")->("
-                    << std::get<0>(key) << ", " << std::get<1>(key) << ")\n";
+                std::cout
+                  << "("
+                  << std::get<0>(value)
+                  << ", "
+                  << std::get<1>(value)
+                  << ")->("
+                  << std::get<0>(key)
+                  << ", "
+                  << std::get<1>(key)
+                  << ")\n";
         }
 
         // build the Directed Acyclic Graph
@@ -310,7 +344,7 @@ class Algorithm
             graph.push_back(Node{i, prev, next, indegree});
         });
 
-        // topological search to find all valid sequences and to 
+        // topological search to find all valid kernel_sequences and to 
         // ensure there are no circular dependencies
         try {
             top_search();
@@ -318,6 +352,10 @@ class Algorithm
             std::cerr << "Error: " << e.what() << "\n";
             //exit here
         }
+
+        // identify indpendent streams
+
+
         printf("\nkernel dependencies\n");
         for (const auto& node : graph)
         {
@@ -326,11 +364,11 @@ class Algorithm
                 std::cout << node.i << "->" << child.i << "\n";
             }
         }
-        printf("\nsequences\n");
-        for (const auto& seq : sequences)
+        printf("\nkernel sequences\n");
+        for (const auto& kseq : kernel_sequences)
         {
             bool first = true;
-            for (const auto& i : seq) {
+            for (const auto& i : kseq) {
                 if (!first)
                     std::cout << " ";
                 std::cout << i ;
@@ -345,131 +383,176 @@ class Algorithm
             devices.push_back(k.options_.devices);
         });
 
-        // build execution chains
-        for (auto& seq : sequences) {
-            for (std::vector<DeviceSelector> dev : cartesian_product(reorder_vector(devices, seq))) {
-                std::vector<KernelExecutor> chain;
-                for (size_t i = 0; i < seq.size(); i++) {
-                    size_t kernel_id = seq[i];
-                    DeviceSelector device = dev[i];
-
-                    // for each data param
-                    //    what is the next downstream kernel that depends on it?
-                    //    if found
-                    //        get the device of that kernel
-                    iter_tuple(kernels_, [&]<typename KernelType>(size_t i, KernelType& k)
-                    {
-                        if (kernel_id == i) {
-
-                            // k is current kernel
-                        }
-                    });
-                    
-                    chain.push_back({ kernel_id, device });
+        // init kernel execution chains
+        for (auto& kseq : kernel_sequences)
+        {
+            for (std::vector<DeviceSelector> dev : cartesian_product(reorder_vector(devices, kseq)))
+            {
+                std::vector<KernelSelector> kernel_chain;
+                for (size_t i = 0; i < kseq.size(); i++)
+                {
+                    size_t kernel_id = kseq[i];
+                    DeviceSelector kernel_device = dev[i];                    
+                    kernel_chain.push_back({ kernel_id, kernel_device });
                 }
-                kernel_chains.push_back(chain);
+                kernel_chains.push_back(kernel_chain);
             }
         }
 
         // set up data transfers
-        for (std::vector<KernelExecutor>& kernel_chain : kernel_chains) {
 
-            for (size_t ln_id = 0; ln_id < kernel_chain.size(); ln_id++) {
+        // 0: loop over kernel chains
+        for (std::vector<KernelSelector>& kernel_chain : kernel_chains)
+        { // kernel_chain
 
-                KernelExecutor& ln = kernel_chain[ln_id];
-                size_t kl_id = ln.kernel_id;
+            // 1: loop over kernels in this chain
+            for (size_t ksel_l_id = 0; ksel_l_id < kernel_chain.size(); ksel_l_id++)
+            { // ksel_l
 
-                // find this kernel
-                iter_tuple(kernels_, [&]<typename KernelTypeL>(size_t il, KernelTypeL& kl)
-                {
-                    if (il == kl_id) { // found this kernel
+                KernelSelector& ksel_l = kernel_chain[ksel_l_id];
+                size_t _il = ksel_l.kernel_id;
 
-                        // for every data param, check if needs to be moved to the DEVICE
-                        iter_tuple(kl.data_params_, [&]<typename ParamTypeL>(size_t jl, ParamTypeL& param_l)
-                        { //(il, jl)
-                            
-                            // to_device will only be DEVICE if (il, jl) is an output and
-                            //   there is a downstream dependent whose kernel is on DEVICE
-                            DeviceSelector device = DeviceSelector::AUTO;
+                // 2: find this kernel
+                iter_tuple(kernels_, [&]<typename KernelTypeL>(size_t il, KernelTypeL& kernel_l) { if (il == _il)
+                { // kernel_l
+                        
+                    // 3: loop over host views in left kernel
+                    iter_tuple(std::get<0>(kernel_l.data_views_), [&]<typename ViewTypeL>(size_t jl, ViewTypeL& view_l)
+                    { // view_l
 
-                            // first, is this an output?
-                            bool is_output = false;
-                            for (const auto& item : outputs) {
-                                const auto& key = item.first;
-                                if ((il == std::get<0>(key)) && (jl == std::get<1>(key))) {
-                                    is_output = true;
-                                    break;
-                                }
+                        // for every data param, check if needs to be copied to a different device
+                        // default to the same device as the kernel
+                        DeviceSelector device = ksel_l.kernel_device;
+
+                        // first, is this view an output?
+                        bool is_output = false;
+                        for (const auto& item : outputs) {
+                            const auto& key = item.first;
+                            if ((il == std::get<0>(key)) && (jl == std::get<1>(key))) {
+                                is_output = true;
+                                break;
                             }
+                        }
+                        
+                        // NOTE, we could handle pre-moves here for device inputs on the first kernel
 
-                            if (is_output) {
-                                // (il, jl) is an output, default to HOST
+                        // 4: only outputs may need to be copied
+                        if (is_output)
+                        { 
+
+                            // if this is the last kernel we need to copy outputs back to the host
+                            if (ksel_l_id >= kernel_chain.size()-1) {
 
                                 device = DeviceSelector::HOST;
 
-                                // if this is the last kernel, end since we need to copy all outputs
-                                //   of the last kernel back to the host
-                                if (ln_id < kernel_chain.size()-1) {
+                            // 5: this is not the last kernel so it may have dependents
+                            } else {
 
-                                    // since this is an output, look for downstream dependents
-                                    //  if any are found, and if any are on the DEVICE, then we
-                                    //  need to go ahead and move the data to DEVICE
-                                    for (const auto& item : inputs) {
-                                        const auto& key   = item.first;
-                                        const auto& value = item.second;
-                                        if ((il == std::get<0>(value)) && (jl == std::get<1>(value))) {
-        
-                                            size_t ir = std::get<0>(key); // only care about the kernel now                                        
-                                            
-                                            // ir is a downstream dependent
-                                            // find kernel ir in the current chain and check its device
-                                            for (size_t rn_id = ln_id+1; rn_id < kernel_chain.size(); rn_id++) {
-                                                KernelExecutor& rn = kernel_chain[rn_id];
-                                                if (rn.kernel_id == ir) { // we've found a downstream dependent
-                                                    if (rn.device == DeviceSelector::DEVICE) {
-                                                        // OK, we ACTUALLY DO need to move this particular data param to the device
-                                                        device = DeviceSelector::DEVICE;
-                                                    }
-                                                    break; // found ir, so stop looking
-                                                }
-                                            }
+                                // look for downstream dependents
+                                std::vector<size_t> dependents = std::vector<size_t>();
+                                for (const auto& item : inputs) {
+                                    const auto& key   = item.first;
+                                    const auto& value = item.second;
 
-                                            // if device is stil HOST, keep looking
-                                            if (device == DeviceSelector::DEVICE)
-                                                break; // stop looking
-                                        }
+                                    // find which kernels depend on this left view
+                                    if ((il == std::get<0>(value)) && (jl == std::get<1>(value))) {
+
+                                        // we only care about the kernel now
+                                        size_t ir = std::get<0>(key);
+                                        dependents.push_back(ir);
                                     }
                                 }
 
-                            } else if (!is_output) {
-                                // (il, jl) is an input, default to same as kernel
-                                device = ln.device;
-                            }
+                                // if no dependents, the data can be safely moved back to the host
+                                if (dependents.size() == 0) {
+                                    device = DeviceSelector::HOST;
+                                
+                                // 6: at least 1 dependent, check if device is different
+                                } else {
 
-                            // push this device to the list
-                            ln.to_device.push_back(device);
-                        });
-                    }
-                });
-            }
-        }
+                                    // 7: loop over the rest of the kernel chain and find dependents in order
+                                    for (size_t ksel_r_id = ksel_l_id+1; ksel_r_id < kernel_chain.size(); ksel_r_id++)
+                                    {
+                                        KernelSelector& ksel_r = kernel_chain[ksel_r_id];
+                                        size_t ir = ksel_r.kernel_id;
+                                        bool is_dependent = false;
+
+                                        // check if this right kernel is in the list of dependents
+                                        for (size_t _ir : dependents) {
+                                            if (_ir == ir) {
+                                                is_dependent = true;
+                                                break;
+                                            }
+                                        }
+                                        // if this kernel isn't a dependent, skip it!
+                                        if (!is_dependent) continue;
+
+                                        // check if ANY downstream dependents have a different device than this kernel
+                                        if (ksel_r.kernel_device != device) {
+
+                                            // OK, we ACTUALLY DO need to move this data
+                                            device = ksel_r.kernel_device;
+                                        }
+
+                                    } // 7
+
+                                } // 6
+                                
+                            } // 5
+
+                        } // 4
+
+                        // now we need to find the index of each of the kernel views in the original views tuple
+                        // 4: loop over the views in the views tuple
+                        size_t j = 0;
+                        iter_tuple(views_, [&]<typename ViewType>(size_t _j, ViewType& _views)
+                        { // note "_views" is actually a tuple of 3 views, one for each allocation type
+
+                            // compare host views
+                            auto view = std::get<0>(_views);
+                            if (view_l.data() == view.data()) j = _j;
+
+                        }); // 4
+
+                        if (is_output) {
+
+                            // now we know the device this view will need to be copied to
+                            ksel_l.output_device.push_back(device);
+
+                            // store the index
+                            ksel_l.output_id.push_back(j);
+
+                        } else {
+
+                            // store the index
+                            ksel_l.input_id.push_back(j);
+
+                        }
+                        
+                    }); // 3
+                
+                }}); // 2
+            
+            } // 1
+            
+        } // 0
 
         std::cout << std::endl << "kernel chains" << std::endl;
-        for (std::vector<KernelExecutor> kernel_chain : kernel_chains) {
+        for (std::vector<KernelSelector> kernel_chain : kernel_chains) {
             bool first_k = true;
-            for (KernelExecutor k : kernel_chain) {
+            for (KernelSelector k : kernel_chain) {
                 bool first_dp = true;
                 if (first_k)
                     first_k = false;
                 else
                     std::cout << " ";
-                std::cout << "(" << k.kernel_id << ", " << k.device << ", (";
-                for (DeviceSelector to_device : k.to_device) {
+                std::cout << "(" << k.kernel_id << ", " << k.kernel_device << ", (";
+                for (DeviceSelector output_device : k.output_device) {
                     if (first_dp)
                         first_dp = false;
                     else
                         std::cout << ",";
-                    std::cout << to_device;
+                    std::cout << output_device;
                 }
                 std::cout << "))";
             }
@@ -482,43 +565,124 @@ class Algorithm
 public:
     void operator() ()
     {
-        for (std::vector<KernelExecutor> kernel_chain : kernel_chains) {
+
+        // 0: loop over kernel chains
+        for (std::vector<KernelSelector> kernel_chain : kernel_chains)
+        { // kernel_chain
+
+            // init timer
             double elapsed = 0.0;
             Kokkos::Timer timer;
-            
+            timer.reset(); // start the timer
+
+            // first selector may need to copy inputs    
             bool first = true;
-            for (KernelExecutor ke : kernel_chain) {
-                iter_tuple(kernels_, [&]<typename KernelType>(size_t i, KernelType& k)
-                {
-                    if (i == ke.kernel_id) { // found this kernel
-                        
-                        // copy inputs to device if required
 
-                        // execute
-                        k(ke.device);
+            // 1: iterate through the chain
+            for (KernelSelector ksel : kernel_chain)
+            { // ksel, i
 
-                        // copy data
-                        //break;
+                size_t i = ksel.kernel_id;
+                DeviceSelector device = ksel.kernel_device;
+
+                // 2: find this kernel
+                iter_tuple(kernels_, [&]<typename KernelType>(size_t _i, KernelType& k) { if (_i == i)
+                { // k
+
+                    // get the data views
+                    auto views_h = std::get<0>(k.data_views_);
+                    auto views_d = std::get<1>(k.data_views_);
+
+                    // 3: copy inputs for first kernel if needed
+                    if ((first) && (device == DeviceSelector::DEVICE)) {
+
+                        // 4: loop over inputs only
+                        for (size_t j : ksel.input_id)
+                        {
+                            // 5: get the host view
+                            iter_tuple(views_h, [&]<typename HostViewType>(size_t jh, HostViewType& view_h) { if (jh == j)
+                            { // view_h
+
+                                // 6: get the device view
+                                iter_tuple(views_d, [&]<typename DeviceViewType>(size_t jd, DeviceViewType& view_d) { if (jd == j)
+                                { // view_d
+
+                                    // copy the data
+                                    Kokkos::deep_copy(view_d, view_h);
+
+                                }}); // 6
+
+                            }}); // 5
+
+                        }
+
+                        // mark first as done
+                        first = false;
+
+                    } // 3
+                    
+                    // execute the kernel
+                    k(device);
+
+                    // copy outputs
+
+                    // 3: loop over the outputs
+                    for (size_t j : ksel.output_id)
+                    {
+                        DeviceSelector device = ksel.output_device[j];
+
+                        // no need to copy if data is already on the correct device
+                        if (device == ksel.kernel_device) continue;
+
+                        // 4: get the host view
+                        iter_tuple(views_h, [&]<typename HostViewType>(size_t jh, HostViewType& view_h) { if (jh == j)
+                        { // view_h
+
+                            // 5: get the device view
+                            iter_tuple(views_d, [&]<typename DeviceViewType>(size_t jd, DeviceViewType& view_d) { if (jd == j)
+                            { // view_d
+
+                                // copy the data, ensure direction is correct
+                                if (device == DeviceSelector::DEVICE)
+                                    Kokkos::deep_copy(view_d, view_h);
+                                else
+                                    Kokkos::deep_copy(view_h, view_d);
+
+                            }}); // 5
+
+                        }}); // 4
+
+                    } // 3
+
+                }}); // 2
+
+            } // 1
+
+            // store the execution time
+            double chain_time = timer.seconds();
+            chain_times.push_back(chain_time);
+
+            { // debug print
+                bool success = true;                 
+                for (KernelSelector ksel : kernel_chain) {
+                    for (size_t j : ksel.output_id) {
+                        iter_tuple(views_, [&]<typename ViewType>(size_t _j, ViewType& _views) { if (_j == j)
+                        {
+                            auto view = std::get<0>(_views);
+                            auto N = view.extent(0);
+                            printf("\n");
+                            for (auto i = 0; i < N; i++) {
+                                printf("[%d,0,%d] %f\n", j, i, view(i));
+                                if (view(i) == 0) success = false;
+                            }
+                        }});
                     }
-                });
-
+                }
+                printf("RESULT: time=%f, success=%s\n", chain_time, (success) ? "true" : "false");
             }
-            //timer.reset();
-            //double kernel_time = timer.seconds();
 
-        }
-        //loop over kernel_chains
-        //for each chain
-        //  start timer
-        //  for each kernel
-        //    execute
-        //    move data
-        //      if tmp views are valid
-        //        2-step deepcopy
-        //      else
-        //        1-step deepcopy
-        //  end timer
-        //  store time
-    }
+        } // 0
+
+    } // end operator()
 
 }; // end Algorithm
