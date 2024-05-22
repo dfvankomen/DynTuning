@@ -392,7 +392,7 @@ class Algorithm
                 for (size_t i = 0; i < kseq.size(); i++)
                 {
                     size_t kernel_id = kseq[i];
-                    DeviceSelector kernel_device = dev[i];                    
+                    DeviceSelector kernel_device = dev[i];               
                     kernel_chain.push_back({ kernel_id, kernel_device });
                 }
                 kernel_chains.push_back(kernel_chain);
@@ -540,14 +540,14 @@ class Algorithm
         std::cout << std::endl << "kernel chains" << std::endl;
         for (std::vector<KernelSelector> kernel_chain : kernel_chains) {
             bool first_k = true;
-            for (KernelSelector k : kernel_chain) {
+            for (KernelSelector ksel : kernel_chain) {
                 bool first_dp = true;
                 if (first_k)
                     first_k = false;
                 else
                     std::cout << " ";
-                std::cout << "(" << k.kernel_id << ", " << k.kernel_device << ", (";
-                for (DeviceSelector output_device : k.output_device) {
+                std::cout << "(" << ksel.kernel_id << ", " << ksel.kernel_device << ", (";
+                for (DeviceSelector output_device : ksel.output_device) {
                     if (first_dp)
                         first_dp = false;
                     else
@@ -556,6 +556,7 @@ class Algorithm
                 }
                 std::cout << "))";
             }
+            std::cout << std::endl;
             std::cout << std::endl;
         }
 
@@ -583,7 +584,7 @@ public:
             { // ksel, i
 
                 size_t i = ksel.kernel_id;
-                DeviceSelector device = ksel.kernel_device;
+                DeviceSelector kernel_device = ksel.kernel_device;
 
                 // 2: find this kernel
                 iter_tuple(kernels_, [&]<typename KernelType>(size_t _i, KernelType& k) { if (_i == i)
@@ -594,7 +595,7 @@ public:
                     auto views_d = std::get<1>(k.data_views_);
 
                     // 3: copy inputs for first kernel if needed
-                    if ((first) && (device == DeviceSelector::DEVICE)) {
+                    if ((first) && (kernel_device == DeviceSelector::DEVICE)) {
 
                         // 4: loop over inputs only
                         for (size_t j : ksel.input_id)
@@ -622,31 +623,32 @@ public:
                     } // 3
                     
                     // execute the kernel
-                    k(device);
+                    k(kernel_device);
 
                     // copy outputs
 
                     // 3: loop over the outputs
-                    for (size_t j : ksel.output_id)
+                    //for (size_t j : ksel.output_id)
+                    for (auto idx = 0; idx < ksel.output_id.size(); idx++)
                     {
-                        DeviceSelector device = ksel.output_device[j];
-
+                        size_t j = ksel.output_id[idx];
+                        DeviceSelector view_device = ksel.output_device[idx];
                         // no need to copy if data is already on the correct device
-                        if (device == ksel.kernel_device) continue;
-
+                        if (view_device == kernel_device) continue;
                         // 4: get the host view
                         iter_tuple(views_h, [&]<typename HostViewType>(size_t jh, HostViewType& view_h) { if (jh == j)
                         { // view_h
-
+                            
                             // 5: get the device view
                             iter_tuple(views_d, [&]<typename DeviceViewType>(size_t jd, DeviceViewType& view_d) { if (jd == j)
                             { // view_d
 
                                 // copy the data, ensure direction is correct
-                                if (device == DeviceSelector::DEVICE)
+                                if (view_device == DeviceSelector::DEVICE) {
                                     Kokkos::deep_copy(view_d, view_h);
-                                else
+                                } else {
                                     Kokkos::deep_copy(view_h, view_d);
+                                }
 
                             }}); // 5
 
@@ -663,16 +665,16 @@ public:
             chain_times.push_back(chain_time);
 
             { // debug print
-                bool success = true;                 
+                bool success = true;
                 for (KernelSelector ksel : kernel_chain) {
                     for (size_t j : ksel.output_id) {
                         iter_tuple(views_, [&]<typename ViewType>(size_t _j, ViewType& _views) { if (_j == j)
                         {
                             auto view = std::get<0>(_views);
                             auto N = view.extent(0);
-                            printf("\n");
+                            //printf("\n");
                             for (auto i = 0; i < N; i++) {
-                                printf("[%d,0,%d] %f\n", j, i, view(i));
+                                //printf("[%d,0,%d] %f\n", j, i, view(i));
                                 if (view(i) == 0) success = false;
                             }
                         }});

@@ -44,14 +44,13 @@ inline auto KernelVVM(KernelOptions& options, ParameterTypes&... data_views)
     auto name   = "vector-vector multiply";
 
     auto is_const = kernel_io_map(data_views...);
-//printf("DEBUG: %d %d %d\n", std::get<0>(is_const), std::get<1>(is_const), std::get<2>(is_const));
 
     // WARNING, remapping loses const! Fix this later...
-
     // transpose the views tuple
     // views_: i = variable, j = device
     // views:  i = device, j = variable
     auto views_ = pack(data_views...);
+
     auto views = std::make_tuple(
         std::make_tuple(
             get_v(0, 0, views_),
@@ -69,10 +68,6 @@ inline auto KernelVVM(KernelOptions& options, ParameterTypes&... data_views)
             get_v(2, 2, views_)
         )
     );
-
-//bool is_const_1 = std::is_const_v<std::remove_reference_t<decltype(std::get<0>(views))>>;
-//bool is_const_2 = std::is_const_v<std::remove_reference_t<decltype(std::get<1>(std::get<0>(views)))>>;
-//printf("DEBUG: %d %d\n", static_cast<int>(is_const_1), static_cast<int>(is_const_2));
 
     // set the extent based on the host view of the output
     auto out    = std::get<2>(std::get<0>(views));

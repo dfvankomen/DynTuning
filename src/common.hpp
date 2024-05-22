@@ -141,3 +141,13 @@ inline bool set_reordering(int argc, char* argv[])
     std::cout << "reordering = " << s << std::endl;
     return flag;
 }
+
+
+template <typename T>
+inline void print_is_reference(const T& arg) {
+    if constexpr (std::is_reference_v<T>) {
+        std::cout << "The argument is a reference." << std::endl;
+    } else {
+        std::cout << "The argument is not a reference." << std::endl;
+    }
+}

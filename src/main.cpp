@@ -98,10 +98,6 @@ int main(int argc, char* argv[])
         auto& q_views = get_data_view("q");
         auto& a_views = get_data_view("a");
 
-//bool is_const_1 = std::is_const_v<std::remove_reference_t<decltype(x_views)>>;
-//bool is_const_2 = std::is_const_v<std::remove_reference_t<decltype(std::as_const(x_views))>>;
-//printf("DEBUG: %d %d\n", static_cast<int>(is_const_1), static_cast<int>(is_const_2));
-
         // define all kernels
         auto k1 = KernelVVM(options, std::as_const(x_views), std::as_const(y_views), z_views); // vvm
         auto k2 = KernelVVM(options, std::as_const(x_views), std::as_const(z_views), w_views); // vvm
@@ -115,7 +111,7 @@ int main(int argc, char* argv[])
         //#ifdef USE_EIGEN
         //Algorithm algo(pack(k1, k2, k3, k4), reordering);
         //#else
-        auto kernels = pack(k1, k2, k3);
+        auto kernels = pack(k1, k2, k3, k4);
         Algorithm algo(kernels, data_views, reordering);
         //#endif
 

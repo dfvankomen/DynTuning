@@ -219,3 +219,37 @@ template <typename T>
 struct get_views_inner_tuple_type {
     using type = decltype(create_views_inner_tuple(std::declval<T>()));
 };
+
+
+
+template <typename ViewType>
+inline void print_view(ViewType& view) {
+    if (view.rank() == 1) {
+        for (size_t i = 0; i < view.extent(0); i++) {
+            // Print all the elements on one line
+            const double elem = view(i);
+            std::cout << elem << " ";
+        }
+        std::cout << std::endl;
+    } /*else if (view.rank() == 2) {
+        for (size_t j = 0; j < view.extent(1); j++) {
+            for (size_t i = 0; i < view.extent(0); i++) {
+                // Print one row per line
+                const double elem = view(i,j);
+                std::cout << elem << " ";
+            }
+            std::cout << std::endl;
+        }
+    } else if (view.rank() == 3) {
+        for (size_t k = 0; k < view.extent(2); k++) {
+            for (size_t j = 0; j < view.extent(1); j++) {
+                for (size_t i = 0; i < view.extent(0); i++) {
+                    // Print one row per line
+                    const double elem = view(i,j,k);
+                    std::cout << elem << " ";
+                }
+                std::cout << std::endl;
+            }
+        }
+    }*/
+}
