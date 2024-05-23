@@ -1,0 +1,120 @@
+
+In C++ I have this nested tuple called "mytuple"
+
+template <typename T>
+struct A
+{
+    T value;
+};
+
+std::tuple<std::tuple<A<int>,A<char>,A<float>>, std::tuple<A<double>,A<std::string>, A<bool>>>
+mytuple(std::make_tuple(A(10),A('a'),A(5.0)), std::make_tuple(A(3.14),A("hello"),A(true)));
+
+I want to get the full type of mytuple so I can use it in a using statement something like this:
+
+using MyTupleType = very_long_type_of_nested_tuple_called_mytuple;
+
+I know that I need some recursive functions to accomplish this. Here's what I have so far:
+
+template <typename T>
+struct get_tuple_element_type<T> {
+    using type = A<T>;
+}
+
+template <typename First, typename... Rest>
+struct get_inner_tuple_type<First, Rest...> {
+    using type = decltype(
+        std::tuple_cat(
+            std::declval<typename get_tuple_element_type<First>::type>(),
+            std::declval<typename get_tuple_element_type<Rest...>::type>()
+        )
+    );
+};
+
+template <typename First, typename... Rest>
+struct get_outer_tuple_type<First, Rest...> {
+    using type = decltype(
+        std::tuple_cat(
+            std::declval<typename get_inner_tuple_type<First>::type>(),
+            std::declval<typename get_inner_tuple_type<Rest...>::type>()
+        )
+    );
+};
+
+template <typename... T>
+struct get_tuple_type<T...> {
+    using type = decltype(typename get_outer_tuple_type<T...>::type);
+};
+
+Help me finish get_tuple_type to resolve the type of mytuple. 
+
+
+
+
+
+
+
+iter_tuple(
+    kernel_l.is_const_,
+    [&](size_t _jl, bool& is_const_l)
+    {
+        if (_jl == jl) {
+          //is_const_l is valid here
+          //START HERE, move the entire loop inside here. 
+
+        }
+    });
+
+
+
+#define get_match_start(iterable, index, var, expression)
+iter_tuple(
+    iterable,
+    [&](size_t index, bool& var) -> void
+    {
+        if (expression) {
+
+            //code here
+
+            
+        }
+    });
+
+
+    { int ij = 0;
+        for (int i=0; i<N; i++) // rows
+            for (int j=0; j<N; j++) // cols
+               a(i,j) = static_cast<double>(ij++); }
+
+
+|  0  1  2  3  4 |   | 2 |   | ( 0*2) + ( 1*2) + ( 2*2) + ( 3*2) + ( 4*2) |   |  20 |
+|  5  6  7  8  9 |   | 2 |   | ( 5*2) + ( 6*2) + ( 7*2) + ( 8*2) + ( 9*2) |   |  70 |
+| 10 11 12 13 14 | x | 2 | = | (10*2) + (11*2) + (12*2) + (13*2) + (14*2) | = | 120 |
+| 15 16 17 18 19 |   | 2 |   | (15*2) + (16*2) + (17*2) + (18*2) + (19*2) |   | 170 |
+| 20 21 22 23 24 |   | 2 |   | (20*2) + (21*2) + (22*2) + (23*2) + (24*2) |   | 220 |
+
+
+|   0 +   2 +   4 +   6 +   8 |   |  20 |
+|  10 +  12 +  14 +  16 +  18 |   |  70 |
+|  20 +  22 +  24 +  26 +  28 | = | 120 |
+|  30 +  32 +  34 +  36 +  38 |   | 170 |
+|  40 +  42 +  44 +  46 +  48 |   | 220 |
+
+
+
+
+
+
+
+
+|  0  1  2 |   | 1 |   | ( 0*1) + ( 1*2) + ( 2*3)|   | 0 +  2 +  6 |   |   8 |
+|  3  4  5 | x | 2 |   | ( 3*1) + ( 4*2) + ( 5*3)|   | 3 +  8 + 15 |   |  26 |
+|  6  7  8 |   | 3 | = | ( 6*1) + ( 7*2) + ( 8*3)| = | 6 + 14 + 24 | = |  44 |
+|  9 10 11 |           | ( 9*1) + (10*2) + (11*3)|   | 9 + 20 + 33 |   |  63 |
+
+
+
+   | 0 +  2 +  6 |   |   8 |
+   | 3 +  8 + 15 |   |  26 |
+ = | 6 + 14 + 24 | = |  44 |
+   | 9 + 20 + 33 |   |  63 |

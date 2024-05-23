@@ -5,7 +5,7 @@
 #include "kernel.hpp"
 #include "Kokkos_Core.hpp"
 
-struct FunctorVVM
+struct FunctorVVM_Host
 {
     template<typename ViewsTuple, typename Index>
     KOKKOS_FUNCTION
@@ -18,12 +18,20 @@ struct FunctorVVM
     }
 };
 
-template<typename... T>
-inline auto kernel_io_map(T&... args)
+struct FunctorVVM_Device
 {
-    return std::make_tuple(static_cast<bool>(std::is_const_v<std::remove_reference_t<decltype(args)>>)...);
-}
+    template<typename ViewsTuple, typename Index>
+    KOKKOS_FUNCTION
+    void operator()(ViewsTuple views, const Index i) const
+    {
+        auto a = std::get<0>(views);
+        auto b = std::get<1>(views);
+        auto c = std::get<2>(views);
+        c(i) = a(i) * b(i);
+    }
+};
 
+/*
 template <typename T>
 inline auto to_const_ref(T& arg, bool flag, int i, int j)
 {
@@ -35,6 +43,7 @@ inline auto to_const_ref(T& arg, bool flag, int i, int j)
         return arg;
     }
 }
+*/
 
 #define get_v(i, j, tuple) std::get<j>(std::get<i>(tuple))
 
@@ -74,11 +83,12 @@ inline auto KernelVVM(KernelOptions& options, ParameterTypes&... data_views)
     auto extent = range_extent(0, out.extent(0));
 
     // create the kernel
-    return Kernel<1, FunctorVVM, decltype(views), decltype(is_const)>(
+    return Kernel<1, FunctorVVM_Host, FunctorVVM_Device, decltype(views), decltype(is_const)>(
         name, views, is_const, extent, options
     );
 }
 
+/*
 template<typename KernelType>
 inline void TestVVM(KernelType& k, std::vector<double>& a, std::vector<double>& b, std::vector<double>& c)
 {
@@ -89,12 +99,12 @@ inline void TestVVM(KernelType& k, std::vector<double>& a, std::vector<double>& 
         std::cout << "\n" << k.kernel_name_ << " (" << device << ")" << std::endl;
 
         auto& a_h = std::get<0>(std::get<0>(k.data_views_));
-        auto& b_h = std::get<0>(std::get<1>(k.data_views_));
-        auto& c_h = std::get<0>(std::get<2>(k.data_views_));
+        auto& b_h = std::get<1>(std::get<0>(k.data_views_));
+        auto& c_h = std::get<2>(std::get<0>(k.data_views_));
 
-        auto& a_d = std::get<1>(std::get<0>(k.data_views_));
+        auto& a_d = std::get<0>(std::get<1>(k.data_views_));
         auto& b_d = std::get<1>(std::get<1>(k.data_views_));
-        auto& c_d = std::get<1>(std::get<2>(k.data_views_));
+        auto& c_d = std::get<2>(std::get<1>(k.data_views_));
         
         //copy inputs from host to device
         if (device == DeviceSelector::DEVICE) {
@@ -119,3 +129,4 @@ inline void TestVVM(KernelType& k, std::vector<double>& a, std::vector<double>& 
     }
 
 }
+*/

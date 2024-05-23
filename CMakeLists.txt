@@ -49,6 +49,7 @@ target_include_directories(exe PRIVATE
 	"${CUDA_HOME}/include"
   src
 )
+add_definitions(-w)
 target_compile_options(exe PRIVATE
   $<$<COMPILE_LANGUAGE:CUDA>:
     --extended-lambdas

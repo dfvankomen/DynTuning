@@ -4,9 +4,9 @@
 #include <numeric>
 #include <map>
 
-#ifdef USE_EIGEN
+//#ifdef USE_EIGEN
 #include "Eigen"
-#endif
+//#endif
 
 // ensure KOKKOS_HOST is set
 #ifndef KOKKOS_HOST
@@ -142,6 +142,20 @@ inline bool set_reordering(int argc, char* argv[])
     return flag;
 }
 
+inline int set_initialize(int argc, char* argv[])
+{
+    bool flag = true;
+    for (int i = 0; i < argc; i++) {
+        std::string arg = argv[i];
+        if (arg.find("--no-initialize") == 0) {
+            flag = false;
+            break;
+        }
+    }
+    std::string s(flag ? "true" : "false");
+    std::cout << "initialize = " << s << std::endl;
+    return flag;
+}
 
 template <typename T>
 inline void print_is_reference(const T& arg) {

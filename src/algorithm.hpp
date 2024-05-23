@@ -5,15 +5,6 @@
 
 #include <set>
 
-// At the end, the algorithm needs to know the "final" output that needs copied to the host
-// Data needs moved if 1) it is a kernel input or 2) algorithm output
-// Data view deallocation if 1) it is not a downstream input 2) and not algorithm output
-// - perhaps use counter for each view (+1 for algorithm output) to know when to deallocate
-// it Need algorithm to construct the counters, for example:
-//   k.parameters[1] is not const and hence output
-//   k2.parameters[0] is const and hence input
-// assert(&std::get<1>(k.parameters) == &std::get<0>(k2.parameters));
-
 // main algorithm object
 template<typename KernelsTuple, typename ViewsTuple>
 class Algorithm
@@ -32,13 +23,6 @@ class Algorithm
 
         build_graph();
 
-        /*
-        #ifdef NDEBUG
-        iter_tuple(kernels_,
-                   []<typename KernelType>(size_t i, KernelType& kernel)
-                   { printf("Registered Kernel: %s\n", kernel.kernel_name_.c_str()); });
-        #endif
-        */
     };
     ~Algorithm() {};
 
@@ -557,8 +541,8 @@ class Algorithm
                 std::cout << "))";
             }
             std::cout << std::endl;
-            std::cout << std::endl;
         }
+        std::cout << std::endl;
 
     } // end build_data_graph
 
@@ -665,22 +649,28 @@ public:
             chain_times.push_back(chain_time);
 
             { // debug print
+                /*
                 bool success = true;
                 for (KernelSelector ksel : kernel_chain) {
                     for (size_t j : ksel.output_id) {
+//if (j > 4) continue;
                         iter_tuple(views_, [&]<typename ViewType>(size_t _j, ViewType& _views) { if (_j == j)
                         {
                             auto view = std::get<0>(_views);
-                            auto N = view.extent(0);
-                            //printf("\n");
-                            for (auto i = 0; i < N; i++) {
-                                //printf("[%d,0,%d] %f\n", j, i, view(i));
-                                if (view(i) == 0) success = false;
-                            }
+                            //if (view.rank() == 1) {
+                                auto N = view.extent(0);
+                                //printf("\n");
+                                for (auto i = 0; i < N; i++) {
+                                    //printf("[%d,0,%d] %f\n", j, i, view(i));
+                                    if (view(i) == 0) success = false;
+                                }
+                            //}
                         }});
                     }
                 }
                 printf("RESULT: time=%f, success=%s\n", chain_time, (success) ? "true" : "false");
+                */
+                printf("RESULT: time=%f\n", chain_time);
             }
 
         } // 0

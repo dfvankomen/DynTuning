@@ -15,7 +15,7 @@ struct KernelOptions
 //=============================================================================
 
 //template<int KernelRank, class FunctorType, typename... ParameterTypes>
-template<int KernelRank, class FunctorType, typename DataViewsType, typename IsConstTupleType>
+template<int KernelRank, class HostFunctorType, class DeviceFunctorType, typename DataViewsType, typename IsConstTupleType>
 class Kernel
 {
   public:
@@ -25,27 +25,8 @@ class Kernel
     using HostExecutionSpace   = Kokkos::KOKKOS_HOST;
     using DeviceExecutionSpace = Kokkos::KOKKOS_DEVICE;
     using BoundType            = RangeExtent<KernelRank>::value_type;
-    //using DataTuple            = std::tuple<ParameterTypes&...>;
     using HostRangePolicy      = typename RangePolicy<KernelRank, HostExecutionSpace>::type;
     using DeviceRangePolicy    = typename RangePolicy<KernelRank, DeviceExecutionSpace>::type;
-    //using DataParamsType       = std::tuple<ParameterTypes&...>;
-    
-    //using DeviceDataViewsType =
-    //  std::tuple<typename EquivalentView<DeviceExecutionSpace, ParameterTypes>::type...>;
-    //using HostDataViewsType = std::tuple<
-    //  typename EquivalentView<DeviceExecutionSpace, ParameterTypes>::type::HostMirror...>;
-    
-    // START HERE, how do we set this type at compile time when both the layout and param type will vary?
-    //using HostDataViewsType = 
-    //    std::tuple<typename EquivalentView<HostExecutionSpace, HostExecutionSpace::array_layout, ParameterTypes>::type...>;
-    //using tmpDataViewsType = 
-    //    std::tuple<typename EquivalentView<HostExecutionSpace, Kokkos::LayoutLeft, ParameterTypes>::type...>;
-    //using DeviceDataViewsType =
-    //    std::tuple<typename EquivalentView<DeviceExecutionSpace, Kokkos::LayoutLeft, ParameterTypes>::type...>;
-    //
-    //using tmptype = Views<HostExecutionSpace, ViewMemoryType::NONOWNING>;
-
-    //using DataViewsType = std::tuple<ParameterTypes&...>;
     
     Kernel(const char* name,
            DataViewsType views,
@@ -55,14 +36,6 @@ class Kernel
       : kernel_name_(std::string(name))
       , data_views_(views)
       , is_const_(is_const)
-      //, data_params_(params)
-      //, data_views_device_(Views<DeviceExecutionSpace>::create_views_from_tuple(params))
-      //, data_views_host_(
-      //    Views<DeviceExecutionSpace>::create_mirror_views_from_tuple(data_views_device_))
-      //, data_views_host_(Views<HostExecutionSpace, ViewMemoryType::NONOWNING>::create_views_from_tuple(params)) // non-owning
-      //, data_views_host_(tmptype::create_views_from_tuple(params)) // non-owning
-      //, data_views_tmp_(Views<HostExecutionSpace, ViewMemoryType::TMP>::create_views_from_tuple(params)) // owning temp space
-      //, data_views_device_(Views<DeviceExecutionSpace, ViewMemoryType::OWNING>::create_views_from_tuple(params)) // owning
       , range_lower_(extent.lower)
       , range_upper_(extent.upper)
       , range_policy_host_(HostRangePolicy(extent.lower, extent.upper))
@@ -83,23 +56,15 @@ class Kernel
         call_kernel(*this, device_selector);
     };
 
-
     // kernel name for debugging
     std::string kernel_name_;
 
     // The kernel code that will be called in an executation on the respective views
-    FunctorType kernel_functor_;
+    HostFunctorType kernel_functor_host_;
+    DeviceFunctorType kernel_functor_device_;
 
     DataViewsType data_views_;
     IsConstTupleType is_const_;
-
-    // Data parameters and views thereof (in the execution spaces that will be considered)
-    //DataParamsType data_params_;
-    
-    // Note: this has to go first for initialization to function correctly.
-    //HostDataViewsType data_views_host_;
-    //tmpDataViewsType data_views_tmp_;
-    //DeviceDataViewsType data_views_device_;    
 
     // Properties pertaining to range policy
     const BoundType range_lower_;
@@ -136,7 +101,9 @@ inline void call_kernel(const std::string& name,
         Kokkos::parallel_for(
             name,
             range_policy,
-            KOKKOS_LAMBDA(int i, int j) { functor(views, i, j); });
+            KOKKOS_LAMBDA(int i, int j) { functor(views, i, j); }
+        );
+
     }
 }
 
@@ -148,13 +115,19 @@ inline void call_kernel(KernelType& k, DeviceSelector device_selector)
         call_kernel<KernelType::rank>(k.kernel_name_,
                                       k.range_policy_host_,
                                       std::get<0>(k.data_views_),
-                                      k.kernel_functor_);
+                                      k.kernel_functor_host_);
     }
     else if (device_selector == DeviceSelector::DEVICE)
     {
         call_kernel<KernelType::rank>(k.kernel_name_,
                                       k.range_policy_device_,
                                       std::get<1>(k.data_views_),
-                                      k.kernel_functor_);
+                                      k.kernel_functor_device_);
     }
+}
+
+template<typename... T>
+inline auto kernel_io_map(T&... args)
+{
+    return std::make_tuple(static_cast<bool>(std::is_const_v<std::remove_reference_t<decltype(args)>>)...);
 }

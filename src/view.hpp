@@ -43,10 +43,8 @@ inline constexpr bool is_specialization<T<Args...>, T> = true;
 template<typename T>
 concept IsStdVector = is_specialization<std::decay_t<T>, std::vector>;
 
-#ifdef USE_EIGEN
 template<typename T>
 concept IsEigenMatrix = std::is_base_of_v<Eigen::MatrixBase<std::decay_t<T>>, std::decay_t<T>>;
-#endif
 
 //=============================================================================
 // EquivalentView
@@ -79,16 +77,6 @@ struct EquivalentView<ExecutionSpace, MemoryLayout, T>
 
 };
 
-/*
-#ifdef USE_EIGEN
-template<typename EigenT, typename KokkosLayout>
-concept IsLayoutSame =
-  (std::is_same_v<KokkosLayout, Kokkos::LayoutRight> && std::decay_t<EigenT>::IsRowMajor == 1) ||
-  (std::is_same_v<KokkosLayout, Kokkos::LayoutLeft> && std::decay_t<EigenT>::IsRowMajor == 0);
-#endif
-*/
-
-#ifdef USE_EIGEN
 template<typename ExecutionSpace, typename MemoryLayout, typename T>
     requires IsEigenMatrix<T>
 struct EquivalentView<ExecutionSpace, MemoryLayout, T>
@@ -100,7 +88,6 @@ struct EquivalentView<ExecutionSpace, MemoryLayout, T>
     // Type for the equivalent view of the data structure
     using type = Kokkos::View<value_type**, MemoryLayout, ExecutionSpace>;
 };
-#endif
 
 //=============================================================================
 // Views
@@ -142,7 +129,6 @@ struct Views
         }
     }
 
-#ifdef USE_EIGEN
     // Specialization for Eigen matrix
     template<typename T>
         requires IsEigenMatrix<T>
@@ -158,7 +144,7 @@ struct Views
         // tmp space on host with same layout as the device
         } else if constexpr (MemoryType == ViewMemoryType::TMP) {
             using ViewType = typename EquivalentView<ExecutionSpace, Kokkos::LayoutLeft, T>::type;
-            return ViewType("", 0, 0);
+            return ViewType("", static_cast<size_t>(matrix.rows()), static_cast<size_t>(matrix.cols()));
 
         // device with ideal device layout
         } else if constexpr (MemoryType == ViewMemoryType:: OWNING) {
@@ -166,7 +152,6 @@ struct Views
             return ViewType("", matrix.rows(), matrix.cols());
         }
     }
-#endif
 
     // Creates view for a given execution space for a variadic list of data structures
     // (each needs a create_view specialization)

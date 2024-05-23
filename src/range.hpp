@@ -8,7 +8,6 @@
 // 3) Vector-vector operation of same size
 // 4) vector-vector opertion with difference sizes (convolution)
 
-
 //=============================================================================
 // RangePolicy
 //=============================================================================
