@@ -521,6 +521,7 @@ class Algorithm
             
         } // 0
 
+        std::random_shuffle(kernel_chains.begin(), kernel_chains.end());
         std::cout << std::endl << "kernel chains" << std::endl;
         for (std::vector<KernelSelector> kernel_chain : kernel_chains) {
             bool first_k = true;
@@ -558,7 +559,8 @@ public:
             // init timer
             double elapsed = 0.0;
             Kokkos::Timer timer;
-            timer.reset(); // start the timer
+            Kokkos::Timer timer_all;
+            timer_all.reset(); // start the timer
 
             // first selector may need to copy inputs    
             bool first = true;
@@ -593,7 +595,9 @@ public:
                                 { // view_d
 
                                     // copy the data
+                                    timer.reset(); // start the timer
                                     Kokkos::deep_copy(view_d, view_h);
+                                    elapsed += timer.seconds();
 
                                 }}); // 6
 
@@ -607,7 +611,9 @@ public:
                     } // 3
                     
                     // execute the kernel
+                    timer.reset(); // start the timer
                     k(kernel_device);
+                    elapsed += timer.seconds();
 
                     // copy outputs
 
@@ -628,11 +634,13 @@ public:
                             { // view_d
 
                                 // copy the data, ensure direction is correct
+                                timer.reset(); // start the timer
                                 if (view_device == DeviceSelector::DEVICE) {
                                     Kokkos::deep_copy(view_d, view_h);
                                 } else {
                                     Kokkos::deep_copy(view_h, view_d);
                                 }
+                                elapsed += timer.seconds();
 
                             }}); // 5
 
@@ -645,8 +653,8 @@ public:
             } // 1
 
             // store the execution time
-            double chain_time = timer.seconds();
-            chain_times.push_back(chain_time);
+            double chain_time = timer_all.seconds();
+            chain_times.push_back(elapsed);
 
             { // debug print
                 /*
@@ -670,7 +678,7 @@ public:
                 }
                 printf("RESULT: time=%f, success=%s\n", chain_time, (success) ? "true" : "false");
                 */
-                printf("RESULT: time=%f\n", chain_time);
+                printf("RESULT: ops=%f, all=%f\n", elapsed, chain_time);
             }
 
         } // 0

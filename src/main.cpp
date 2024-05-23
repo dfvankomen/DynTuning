@@ -34,9 +34,9 @@
 int main(int argc, char* argv[])
 {
     DeviceSelector device = set_device(argc, argv);
-    int N = set_N(argc, argv);
-    bool reordering = set_reordering(argc, argv);
-    bool initialize = set_initialize(argc, argv);
+    int                 N = set_N(argc, argv);
+    bool       reordering = set_reordering(argc, argv);
+    bool       initialize = set_initialize(argc, argv);
     
     // execution options
     KernelOptions options;
@@ -53,7 +53,7 @@ int main(int argc, char* argv[])
         std::vector<double> q(N);       
         std::vector<double> r(N);
         std::vector<double> s(N);
-        Eigen::MatrixXd  t(N, N);
+        //Eigen::MatrixXd  t(N, N);
         std::vector<double> u(N);
         std::vector<double> v(N);
         std::vector<double> w(N);
@@ -67,7 +67,7 @@ int main(int argc, char* argv[])
             std::iota(q.begin(), q.end(), 1.0);
             std::iota(r.begin(), r.end(), 1.0);
             std::iota(s.begin(), s.end(), 1.0);
-            { int ij = 0; for (int i=0; i<N; i++) for (int j=0; j<N; j++) t(i,j) = static_cast<double>(ij++); }
+            //{ int ij = 0; for (int i=0; i<N; i++) for (int j=0; j<N; j++) t(i,j) = static_cast<double>(ij++); }
             std::iota(v.begin(), v.end(), 1.0);
             std::iota(u.begin(), u.end(), 1.0); // temporary: initialized so we can disable the 2D cases
             std::iota(x.begin(), x.end(), 1.0);
@@ -82,7 +82,7 @@ int main(int argc, char* argv[])
             HashedName<hash("q")>(),
             HashedName<hash("r")>(),
             HashedName<hash("s")>(),
-            HashedName<hash("t")>(),
+            //HashedName<hash("t")>(),
             HashedName<hash("u")>(),
             HashedName<hash("v")>(),
             HashedName<hash("w")>(),
@@ -104,12 +104,12 @@ int main(int argc, char* argv[])
         auto& z_views = get_data_view("z");
         */
         printf("\nbuilding views\n");
-        auto data_views = create_views(pack(q, r, s, t, u, v, w, x, y, z));
+        auto data_views = create_views(pack(q, r, s, u, v, w, x, y, z));
 
         auto& q_views = std::get<find<hash("q")>(data_names)>(data_views);
         auto& r_views = std::get<find<hash("r")>(data_names)>(data_views);
         auto& s_views = std::get<find<hash("s")>(data_names)>(data_views);
-        auto& t_views = std::get<find<hash("t")>(data_names)>(data_views);
+        //auto& t_views = std::get<find<hash("t")>(data_names)>(data_views);
         auto& u_views = std::get<find<hash("u")>(data_names)>(data_views);
         auto& v_views = std::get<find<hash("v")>(data_names)>(data_views);
         auto& w_views = std::get<find<hash("w")>(data_names)>(data_views);
@@ -122,8 +122,11 @@ int main(int argc, char* argv[])
         auto k1 = KernelVVM(options, std::as_const(q_views), std::as_const(r_views), s_views); // vvm
         //auto k2 = KernelMVM(options, std::as_const(t_views), std::as_const(s_views), u_views); // mvm
         auto k3 = KernelVVM(options, std::as_const(v_views), std::as_const(u_views), w_views); // vvm
+        //auto k5 = KernelVVM(options, std::as_const(v_views), std::as_const(u_views), w_views); // vvm
         auto k4 = KernelVVM(options, std::as_const(s_views), std::as_const(y_views), z_views); // vvm
-        
+       
+
+
         // register all kernels info an Algorithm
         //auto kernels = pack(k1, k2, k3, k4);
         printf("\nbuilding algorithm\n");
