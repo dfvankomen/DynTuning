@@ -4,6 +4,7 @@
 #include "kernel.hpp"
 
 #include <set>
+#include <iomanip>
 
 // main algorithm object
 template<typename KernelsTuple, typename ViewsTuple>
@@ -151,7 +152,14 @@ class Algorithm
     // NOTE right now we always assume kernels are executed in a sequence
     //   however, in the future this could be expanded to allow concurrency of independent subchains
     std::vector<std::vector<KernelSelector>> kernel_chains;
+    
+    // Storage vectors for our profiling results. Note that they're all resized to the proper chain lengths
     std::vector<double> chain_times = std::vector<double>();
+    std::vector<double> chain_elapsed_times = std::vector<double>();
+    // the stored randomized order of chains
+    std::vector<unsigned int> kernel_chain_ids;
+
+    int total_operations_run = 0;
 
   private:
     // topological search to ensure the graph is acyclic
@@ -521,14 +529,24 @@ class Algorithm
             
         } // 0
 
-        std::random_shuffle(kernel_chains.begin(), kernel_chains.end());
+        // with the vector of kernels now created, we can create a list of IDs to use to store more
+        // information about the profiling
+        kernel_chain_ids.resize(kernel_chains.size());
+        std::iota(kernel_chain_ids.begin(), kernel_chain_ids.end(), 0);
+
         std::cout << std::endl << "kernel chains" << std::endl;
-        for (std::vector<KernelSelector> kernel_chain : kernel_chains) {
+        // for (std::vector<KernelSelector> kernel_chain : kernel_chains) {
+        for (uint32_t i_chain : kernel_chain_ids) {
+
+            std::vector<KernelSelector> kernel_chain = kernel_chains[i_chain];
+
             bool first_k = true;
             for (KernelSelector ksel : kernel_chain) {
                 bool first_dp = true;
-                if (first_k)
+                if (first_k) {
+                    std::cout << "Chain " << std::setw(4) << i_chain << ": ";
                     first_k = false;
+                }
                 else
                     std::cout << " ";
                 std::cout << "(" << ksel.kernel_id << ", " << ksel.kernel_device << ", (";
@@ -551,10 +569,34 @@ class Algorithm
 public:
     void operator() ()
     {
+        // std::cout << "Running algorithm attempt id = " << total_operations_run << std::endl;
+
+#ifdef DYNTUNE_ENABLE_ORDER_SHUFFLE
+        // std::cout << "Shuffling kernel chains..." << std::endl;
+        std::random_shuffle(kernel_chain_ids.begin(), kernel_chain_ids.end());
+#endif
+
+#if 0
+        std::cout << "Executing chains in the following order: " << std::endl << "    ";
+        for (uint32_t i_chain : kernel_chain_ids) {
+            std::cout << i_chain << " ";
+        }
+        std::cout << std::endl << std::endl << std::endl;
+#endif
+
+        // set up the execution time vector, if the size isn't already correct
+        if (chain_times.size() != kernel_chains.size())
+            chain_times.resize(kernel_chains.size(), 0.0);
+
+        // same with full elapsed times
+        if (chain_elapsed_times.size() != kernel_chains.size())
+            chain_elapsed_times.resize(kernel_chains.size(), 0.0);
 
         // 0: loop over kernel chains
-        for (std::vector<KernelSelector> kernel_chain : kernel_chains)
+        // for (std::vector<KernelSelector> kernel_chain : kernel_chains)
+        for (uint32_t i_chain : kernel_chain_ids)
         { // kernel_chain
+            std::vector<KernelSelector> kernel_chain = kernel_chains[i_chain];
 
             // init timer
             double elapsed = 0.0;
@@ -652,9 +694,11 @@ public:
 
             } // 1
 
-            // store the execution time
+            // store the execution times in the vectors
             double chain_time = timer_all.seconds();
-            chain_times.push_back(elapsed);
+            chain_times[i_chain] += chain_time;
+            chain_elapsed_times[i_chain] += elapsed;
+
 
             { // debug print
                 /*
@@ -678,11 +722,56 @@ public:
                 }
                 printf("RESULT: time=%f, success=%s\n", chain_time, (success) ? "true" : "false");
                 */
-                printf("RESULT: ops=%f, all=%f\n", elapsed, chain_time);
+                // printf("RESULT: ops=%f, all=%f\n", elapsed, chain_time);
             }
 
         } // 0
 
+        total_operations_run++;
+
     } // end operator()
+
+    void print_results(bool sort_results = true)
+    {
+        // this just goes through the kernels and prints the timing results
+        std::cout << "==========================" << std::endl;
+        std::cout << "===== Timing results =====" << std::endl << std::endl;
+
+        std::cout << "Number of times run: " << total_operations_run << std::endl;
+        std::cout << "Total number of chains run: " << kernel_chain_ids.size() << std::endl;
+
+        std::cout << "Profiling results (avg): (chain_id, ops_time, total_time):" << std::endl;
+
+        if (sort_results)
+        {
+            std::vector<size_t> sorted_ids(kernel_chains.size());
+            std::iota(sorted_ids.begin(), sorted_ids.end(), 0);
+
+            std::stable_sort(sorted_ids.begin(),
+                             sorted_ids.end(),
+                             [this](size_t i1, size_t i2)
+                             { return this->chain_times[i1] < this->chain_times[i2]; });
+
+            for (auto i_chain : sorted_ids)
+            {
+                double chain_time = chain_times[i_chain] / total_operations_run;
+                double total_time = chain_elapsed_times[i_chain] / total_operations_run;
+                std::cout << "Chain " << std::setw(4) << i_chain << "\t" << std::scientific
+                          << chain_time << "\t" << total_time << std::endl;
+            }
+        }
+        else
+        {
+            for (size_t i_chain = 0; i_chain < kernel_chains.size(); i_chain++)
+            {
+                double chain_time = chain_times[i_chain] / total_operations_run;
+                double total_time = chain_elapsed_times[i_chain] / total_operations_run;
+                std::cout << "Chain " << std::setw(4) << i_chain << "\t" << std::scientific
+                          << chain_time << "\t" << total_time << std::endl;
+            }
+        }
+
+        std::cout << std::endl << "==========================" << std::endl;
+    }
 
 }; // end Algorithm

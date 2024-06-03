@@ -157,6 +157,20 @@ inline int set_initialize(int argc, char* argv[])
     return flag;
 }
 
+inline int set_num_sims(int argc, char* argv[])
+{
+    int N = 5;
+    for (int i = 0; i < argc; i++) {
+        std::string arg = argv[i];
+        if (arg.find("--num_sims=") == 0) {
+            N = std::atoi(arg.substr(11).c_str());
+            break;
+        }
+    }
+    std::cout << "num_sims = " << N << std::endl;
+    return N;
+}
+
 template <typename T>
 inline void print_is_reference(const T& arg) {
     if constexpr (std::is_reference_v<T>) {

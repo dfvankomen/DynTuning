@@ -33,10 +33,15 @@
 
 int main(int argc, char* argv[])
 {
+
+    // seed any randomization!
+    std::srand ( unsigned ( std::time(0) ) );
+
     DeviceSelector device = set_device(argc, argv);
     int                 N = set_N(argc, argv);
     bool       reordering = set_reordering(argc, argv);
     bool       initialize = set_initialize(argc, argv);
+    int          num_sims = set_num_sims(argc, argv);
     
     // execution options
     KernelOptions options;
@@ -134,8 +139,14 @@ int main(int argc, char* argv[])
         Algorithm algo(kernels, data_views, reordering);
 
         // run the algorithm
-        printf("\nrunning algorithm\n");
-        algo();
+        printf("\nrunning algorithm...\n");
+        double progress = 0.0;
+        for (size_t ii = 0; ii < num_sims; ii++)
+            algo();
+
+        std::cout << std::endl;
+
+        algo.print_results();
 
         // TESTS
         //TestVVM(k1, q, r, s);

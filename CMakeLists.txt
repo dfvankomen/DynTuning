@@ -41,6 +41,12 @@ else()
 endif()
 message(STATUS "Kokkos Device Execution Space: Kokkos::" ${Kokkos_DEVICE})
 
+option(DYNTUNE_ENABLE_ORDER_SHUFFLE "Whether or not to shuffle the kernel operation order" ON)
+
+if(DYNTUNE_ENABLE_ORDER_SHUFFLE)
+  add_definitions(-DDYNTUNE_ENABLE_ORDER_SHUFFLE)
+endif()
+
 # Build
 add_executable(exe src/main.cpp)
 target_link_libraries(exe PRIVATE Kokkos::kokkos)
