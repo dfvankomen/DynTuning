@@ -8,6 +8,7 @@ cd build
 cmake_cmd="cmake ../ \
   -DKokkos_ROOT=${KOKKOS_HOME}/lib/cmake/Kokkos \
   -DCMAKE_CXX_COMPILER=${KOKKOS_HOME}/bin/nvcc_wrapper \
+  -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
   -DKokkos_DEVICE=ON"
 
 make_cmd="make -j 8"
