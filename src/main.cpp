@@ -42,6 +42,7 @@ int main(int argc, char* argv[])
     bool       reordering = set_reordering(argc, argv);
     bool       initialize = set_initialize(argc, argv);
     int          num_sims = set_num_sims(argc, argv);
+    int   num_kernel_runs = set_num_kernel_runs(argc, argv);
     
     // execution options
     KernelOptions options;
@@ -137,6 +138,7 @@ int main(int argc, char* argv[])
         printf("\nbuilding algorithm\n");
         auto kernels = pack(k1, k3, k4);
         Algorithm algo(kernels, data_views, reordering);
+        algo.set_num_kernel_runs(num_kernel_runs);
 
         // run the algorithm
         printf("\nrunning algorithm...\n");

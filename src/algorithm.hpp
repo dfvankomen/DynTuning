@@ -58,6 +58,10 @@ class Algorithm
     };
     */
 
+    void set_num_kernel_runs(int in) {
+        kernel_runs = in;
+    }
+
   private:
 
     enum { UNVISITED, INPROGRESS, VISITED };
@@ -160,6 +164,7 @@ class Algorithm
     std::vector<unsigned int> kernel_chain_ids;
 
     int total_operations_run = 0;
+    int kernel_runs = 1;
 
   private:
     // topological search to ensure the graph is acyclic
@@ -598,131 +603,134 @@ public:
         { // kernel_chain
             std::vector<KernelSelector> kernel_chain = kernel_chains[i_chain];
 
-            // init timer
-            double elapsed = 0.0;
-            Kokkos::Timer timer;
-            Kokkos::Timer timer_all;
-            timer_all.reset(); // start the timer
+            for (int i_run = 0; i_run < kernel_runs; i_run++) {
 
-            // first selector may need to copy inputs    
-            bool first = true;
+                // init timer
+                double elapsed = 0.0;
+                Kokkos::Timer timer;
+                Kokkos::Timer timer_all;
+                timer_all.reset(); // start the timer
 
-            // 1: iterate through the chain
-            for (KernelSelector ksel : kernel_chain)
-            { // ksel, i
+                // first selector may need to copy inputs    
+                bool first = true;
 
-                size_t i = ksel.kernel_id;
-                DeviceSelector kernel_device = ksel.kernel_device;
+                // 1: iterate through the chain
+                for (KernelSelector ksel : kernel_chain)
+                { // ksel, i
 
-                // 2: find this kernel
-                iter_tuple(kernels_, [&]<typename KernelType>(size_t _i, KernelType& k) { if (_i == i)
-                { // k
+                    size_t i = ksel.kernel_id;
+                    DeviceSelector kernel_device = ksel.kernel_device;
 
-                    // get the data views
-                    auto views_h = std::get<0>(k.data_views_);
-                    auto views_d = std::get<1>(k.data_views_);
+                    // 2: find this kernel
+                    iter_tuple(kernels_, [&]<typename KernelType>(size_t _i, KernelType& k) { if (_i == i)
+                    { // k
 
-                    // 3: copy inputs for first kernel if needed
-                    if ((first) && (kernel_device == DeviceSelector::DEVICE)) {
+                        // get the data views
+                        auto views_h = std::get<0>(k.data_views_);
+                        auto views_d = std::get<1>(k.data_views_);
 
-                        // 4: loop over inputs only
-                        for (size_t j : ksel.input_id)
+                        // 3: copy inputs for first kernel if needed
+                        if ((first) && (kernel_device == DeviceSelector::DEVICE)) {
+
+                            // 4: loop over inputs only
+                            for (size_t j : ksel.input_id)
+                            {
+                                // 5: get the host view
+                                iter_tuple(views_h, [&]<typename HostViewType>(size_t jh, HostViewType& view_h) { if (jh == j)
+                                { // view_h
+
+                                    // 6: get the device view
+                                    iter_tuple(views_d, [&]<typename DeviceViewType>(size_t jd, DeviceViewType& view_d) { if (jd == j)
+                                    { // view_d
+
+                                        // copy the data
+                                        timer.reset(); // start the timer
+                                        Kokkos::deep_copy(view_d, view_h);
+                                        elapsed += timer.seconds();
+
+                                    }}); // 6
+
+                                }}); // 5
+
+                            }
+
+                            // mark first as done
+                            first = false;
+
+                        } // 3
+                        
+                        // execute the kernel
+                        timer.reset(); // start the timer
+                        k(kernel_device);
+                        elapsed += timer.seconds();
+
+                        // copy outputs
+
+                        // 3: loop over the outputs
+                        //for (size_t j : ksel.output_id)
+                        for (auto idx = 0; idx < ksel.output_id.size(); idx++)
                         {
-                            // 5: get the host view
+                            size_t j = ksel.output_id[idx];
+                            DeviceSelector view_device = ksel.output_device[idx];
+                            // no need to copy if data is already on the correct device
+                            if (view_device == kernel_device) continue;
+                            // 4: get the host view
                             iter_tuple(views_h, [&]<typename HostViewType>(size_t jh, HostViewType& view_h) { if (jh == j)
                             { // view_h
-
-                                // 6: get the device view
+                                
+                                // 5: get the device view
                                 iter_tuple(views_d, [&]<typename DeviceViewType>(size_t jd, DeviceViewType& view_d) { if (jd == j)
                                 { // view_d
 
-                                    // copy the data
+                                    // copy the data, ensure direction is correct
                                     timer.reset(); // start the timer
-                                    Kokkos::deep_copy(view_d, view_h);
+                                    if (view_device == DeviceSelector::DEVICE) {
+                                        Kokkos::deep_copy(view_d, view_h);
+                                    } else {
+                                        Kokkos::deep_copy(view_h, view_d);
+                                    }
                                     elapsed += timer.seconds();
 
-                                }}); // 6
+                                }}); // 5
 
-                            }}); // 5
+                            }}); // 4
 
+                        } // 3
+
+                    }}); // 2
+
+                } // 1
+
+                // store the execution times in the vectors
+                double chain_time = timer_all.seconds();
+                chain_times[i_chain] += chain_time;
+                chain_elapsed_times[i_chain] += elapsed;
+
+
+                { // debug print
+                    /*
+                    bool success = true;
+                    for (KernelSelector ksel : kernel_chain) {
+                        for (size_t j : ksel.output_id) {
+    //if (j > 4) continue;
+                            iter_tuple(views_, [&]<typename ViewType>(size_t _j, ViewType& _views) { if (_j == j)
+                            {
+                                auto view = std::get<0>(_views);
+                                //if (view.rank() == 1) {
+                                    auto N = view.extent(0);
+                                    //printf("\n");
+                                    for (auto i = 0; i < N; i++) {
+                                        //printf("[%d,0,%d] %f\n", j, i, view(i));
+                                        if (view(i) == 0) success = false;
+                                    }
+                                //}
+                            }});
                         }
-
-                        // mark first as done
-                        first = false;
-
-                    } // 3
-                    
-                    // execute the kernel
-                    timer.reset(); // start the timer
-                    k(kernel_device);
-                    elapsed += timer.seconds();
-
-                    // copy outputs
-
-                    // 3: loop over the outputs
-                    //for (size_t j : ksel.output_id)
-                    for (auto idx = 0; idx < ksel.output_id.size(); idx++)
-                    {
-                        size_t j = ksel.output_id[idx];
-                        DeviceSelector view_device = ksel.output_device[idx];
-                        // no need to copy if data is already on the correct device
-                        if (view_device == kernel_device) continue;
-                        // 4: get the host view
-                        iter_tuple(views_h, [&]<typename HostViewType>(size_t jh, HostViewType& view_h) { if (jh == j)
-                        { // view_h
-                            
-                            // 5: get the device view
-                            iter_tuple(views_d, [&]<typename DeviceViewType>(size_t jd, DeviceViewType& view_d) { if (jd == j)
-                            { // view_d
-
-                                // copy the data, ensure direction is correct
-                                timer.reset(); // start the timer
-                                if (view_device == DeviceSelector::DEVICE) {
-                                    Kokkos::deep_copy(view_d, view_h);
-                                } else {
-                                    Kokkos::deep_copy(view_h, view_d);
-                                }
-                                elapsed += timer.seconds();
-
-                            }}); // 5
-
-                        }}); // 4
-
-                    } // 3
-
-                }}); // 2
-
-            } // 1
-
-            // store the execution times in the vectors
-            double chain_time = timer_all.seconds();
-            chain_times[i_chain] += chain_time;
-            chain_elapsed_times[i_chain] += elapsed;
-
-
-            { // debug print
-                /*
-                bool success = true;
-                for (KernelSelector ksel : kernel_chain) {
-                    for (size_t j : ksel.output_id) {
-//if (j > 4) continue;
-                        iter_tuple(views_, [&]<typename ViewType>(size_t _j, ViewType& _views) { if (_j == j)
-                        {
-                            auto view = std::get<0>(_views);
-                            //if (view.rank() == 1) {
-                                auto N = view.extent(0);
-                                //printf("\n");
-                                for (auto i = 0; i < N; i++) {
-                                    //printf("[%d,0,%d] %f\n", j, i, view(i));
-                                    if (view(i) == 0) success = false;
-                                }
-                            //}
-                        }});
                     }
+                    printf("RESULT: time=%f, success=%s\n", chain_time, (success) ? "true" : "false");
+                    */
+                    // printf("RESULT: ops=%f, all=%f\n", elapsed, chain_time);
                 }
-                printf("RESULT: time=%f, success=%s\n", chain_time, (success) ? "true" : "false");
-                */
-                // printf("RESULT: ops=%f, all=%f\n", elapsed, chain_time);
             }
 
         } // 0
@@ -737,8 +745,12 @@ public:
         std::cout << "==========================" << std::endl;
         std::cout << "===== Timing results =====" << std::endl << std::endl;
 
-        std::cout << "Number of times run: " << total_operations_run << std::endl;
         std::cout << "Total number of chains run: " << kernel_chain_ids.size() << std::endl;
+        std::cout << "Number of times run: " << total_operations_run << std::endl;
+        std::cout << "Number of times each chain run: " << kernel_runs << std::endl;
+        std::cout << "Total number of times run: " << total_operations_run * kernel_runs
+                  << std::endl;
+
 
         std::cout << "Profiling results (avg): (chain_id, ops_time, total_time):" << std::endl;
 
@@ -754,8 +766,9 @@ public:
 
             for (auto i_chain : sorted_ids)
             {
-                double chain_time = chain_times[i_chain] / total_operations_run;
-                double total_time = chain_elapsed_times[i_chain] / total_operations_run;
+                double chain_time = chain_times[i_chain] / total_operations_run / kernel_runs;
+                double total_time =
+                  chain_elapsed_times[i_chain] / total_operations_run / kernel_runs;
                 std::cout << "Chain " << std::setw(4) << i_chain << "\t" << std::scientific
                           << chain_time << "\t" << total_time << std::endl;
             }
@@ -764,8 +777,9 @@ public:
         {
             for (size_t i_chain = 0; i_chain < kernel_chains.size(); i_chain++)
             {
-                double chain_time = chain_times[i_chain] / total_operations_run;
-                double total_time = chain_elapsed_times[i_chain] / total_operations_run;
+                double chain_time = chain_times[i_chain] / total_operations_run / kernel_runs;
+                double total_time =
+                  chain_elapsed_times[i_chain] / total_operations_run / kernel_runs;
                 std::cout << "Chain " << std::setw(4) << i_chain << "\t" << std::scientific
                           << chain_time << "\t" << total_time << std::endl;
             }
