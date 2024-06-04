@@ -171,19 +171,36 @@ inline int set_num_sims(int argc, char* argv[])
     return N;
 }
 
-inline int set_num_kernel_runs(int argc, char* argv[])
+inline int set_num_chain_runs(int argc, char* argv[])
 {
     int N = 1;
     for (int i = 0; i < argc; i++) {
         std::string arg = argv[i];
-        if (arg.find("--kernel_runs=") == 0) {
-            N = std::atoi(arg.substr(14).c_str());
+        if (arg.find("--chain_runs=") == 0) {
+            N = std::atoi(arg.substr(13).c_str());
             break;
         }
     }
-    std::cout << "kernel_runs = " << N << std::endl;
+    std::cout << "chain_runs = " << N << std::endl;
     return N;
 }
+
+
+#ifdef DYNTUNE_SINGLE_CHAIN_RUN
+inline unsigned int set_single_chain_run(int argc, char* argv[])
+{
+    unsigned int N = 0;
+    for (int i = 0; i < argc; i++) {
+        std::string arg = argv[i];
+        if (arg.find("--single_chain=") == 0) {
+            N = std::atoi(arg.substr(15).c_str());
+            break;
+        }
+    }
+    std::cout << "single_chain = " << N << std::endl;
+    return N;
+}
+#endif
 
 template <typename T>
 inline void print_is_reference(const T& arg) {

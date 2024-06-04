@@ -6,6 +6,8 @@
 #include <set>
 #include <iomanip>
 
+#define DEBUG_ENABLED 0
+
 // main algorithm object
 template<typename KernelsTuple, typename ViewsTuple>
 class Algorithm
@@ -58,9 +60,16 @@ class Algorithm
     };
     */
 
-    void set_num_kernel_runs(int in) {
-        kernel_runs = in;
+    void set_num_chain_runs(int in) {
+        chain_runs = in;
     }
+
+
+#ifdef DYNTUNE_SINGLE_CHAIN_RUN
+    void set_selected_chain(unsigned int in) {
+        selected_only_run = in;
+    }
+#endif
 
   private:
 
@@ -164,7 +173,11 @@ class Algorithm
     std::vector<unsigned int> kernel_chain_ids;
 
     int total_operations_run = 0;
-    int kernel_runs = 1;
+    int chain_runs = 1;
+
+#ifdef DYNTUNE_SINGLE_CHAIN_RUN
+    unsigned int selected_only_run = 0;
+#endif
 
   private:
     // topological search to ensure the graph is acyclic
@@ -581,7 +594,7 @@ public:
         std::random_shuffle(kernel_chain_ids.begin(), kernel_chain_ids.end());
 #endif
 
-#if 0
+#if DEBUG_ENABLED
         std::cout << "Executing chains in the following order: " << std::endl << "    ";
         for (uint32_t i_chain : kernel_chain_ids) {
             std::cout << i_chain << " ";
@@ -601,9 +614,16 @@ public:
         // for (std::vector<KernelSelector> kernel_chain : kernel_chains)
         for (uint32_t i_chain : kernel_chain_ids)
         { // kernel_chain
+
+#ifdef DYNTUNE_SINGLE_CHAIN_RUN
+            if (i_chain != selected_only_run) {
+                std::cout << "Skipping chain number: " << i_chain << std::endl;
+                continue;
+            }
+#endif
             std::vector<KernelSelector> kernel_chain = kernel_chains[i_chain];
 
-            for (int i_run = 0; i_run < kernel_runs; i_run++) {
+            for (int i_run = 0; i_run < chain_runs; i_run++) {
 
                 // init timer
                 double elapsed = 0.0;
@@ -747,8 +767,8 @@ public:
 
         std::cout << "Total number of chains run: " << kernel_chain_ids.size() << std::endl;
         std::cout << "Number of times run: " << total_operations_run << std::endl;
-        std::cout << "Number of times each chain run: " << kernel_runs << std::endl;
-        std::cout << "Total number of times run: " << total_operations_run * kernel_runs
+        std::cout << "Number of times each chain run: " << chain_runs << std::endl;
+        std::cout << "Total number of times run: " << total_operations_run * chain_runs
                   << std::endl;
 
 
@@ -766,9 +786,9 @@ public:
 
             for (auto i_chain : sorted_ids)
             {
-                double chain_time = chain_times[i_chain] / total_operations_run / kernel_runs;
+                double chain_time = chain_times[i_chain] / total_operations_run / chain_runs;
                 double total_time =
-                  chain_elapsed_times[i_chain] / total_operations_run / kernel_runs;
+                  chain_elapsed_times[i_chain] / total_operations_run / chain_runs;
                 std::cout << "Chain " << std::setw(4) << i_chain << "\t" << std::scientific
                           << chain_time << "\t" << total_time << std::endl;
             }
@@ -777,9 +797,9 @@ public:
         {
             for (size_t i_chain = 0; i_chain < kernel_chains.size(); i_chain++)
             {
-                double chain_time = chain_times[i_chain] / total_operations_run / kernel_runs;
+                double chain_time = chain_times[i_chain] / total_operations_run / chain_runs;
                 double total_time =
-                  chain_elapsed_times[i_chain] / total_operations_run / kernel_runs;
+                  chain_elapsed_times[i_chain] / total_operations_run / chain_runs;
                 std::cout << "Chain " << std::setw(4) << i_chain << "\t" << std::scientific
                           << chain_time << "\t" << total_time << std::endl;
             }

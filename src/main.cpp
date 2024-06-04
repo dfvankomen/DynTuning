@@ -42,7 +42,11 @@ int main(int argc, char* argv[])
     bool       reordering = set_reordering(argc, argv);
     bool       initialize = set_initialize(argc, argv);
     int          num_sims = set_num_sims(argc, argv);
-    int   num_kernel_runs = set_num_kernel_runs(argc, argv);
+    int   num_chain_runs  = set_num_chain_runs(argc, argv);
+
+#ifdef DYNTUNE_SINGLE_CHAIN_RUN
+    unsigned int single_chain = set_single_chain_run(argc, argv);
+#endif
     
     // execution options
     KernelOptions options;
@@ -138,7 +142,12 @@ int main(int argc, char* argv[])
         printf("\nbuilding algorithm\n");
         auto kernels = pack(k1, k3, k4);
         Algorithm algo(kernels, data_views, reordering);
-        algo.set_num_kernel_runs(num_kernel_runs);
+        algo.set_num_chain_runs(num_chain_runs);
+
+
+#ifdef DYNTUNE_SINGLE_CHAIN_RUN
+        algo.set_selected_chain(single_chain);
+#endif
 
         // run the algorithm
         printf("\nrunning algorithm...\n");
