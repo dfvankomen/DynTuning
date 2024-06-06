@@ -664,7 +664,11 @@ public:
                                     { // view_d
 
                                         // copy the data
+#ifdef DYNTUNE_DEBUG_ENABLED
+                                        std::cout << "chain_" << i_chain << ": ker_" << i <<":  INPUT -> host-2-device : view " << jh << "->" << jd << std::endl;
+#endif
                                         timer.reset(); // start the timer
+                                        // NOTE: remember that deep copy is (destination, source)
                                         Kokkos::deep_copy(view_d, view_h);
                                         elapsed += timer.seconds();
 
@@ -705,8 +709,14 @@ public:
                                     // copy the data, ensure direction is correct
                                     timer.reset(); // start the timer
                                     if (view_device == DeviceSelector::DEVICE) {
+#ifdef DYNTUNE_DEBUG_ENABLED
+                                        std::cout << "chain_" << i_chain << ": ker_" << i <<":  OUTPUT -> host-2-device : view " << jh << "->" << jd << std::endl;
+#endif
                                         Kokkos::deep_copy(view_d, view_h);
                                     } else {
+#ifdef DYNTUNE_DEBUG_ENABLED
+                                        std::cout << "chain_" << i_chain << ": ker_" << i <<":  OUTPUT -> device-2-host : view " << jh << "->" << jd << std::endl;
+#endif
                                         Kokkos::deep_copy(view_h, view_d);
                                     }
                                     elapsed += timer.seconds();
