@@ -71,6 +71,10 @@ int main(int argc, char* argv[])
         std::vector<double> y(N);
         std::vector<double> z(N);
 
+        std::vector<double> s_truth(N);
+        std::vector<double> w_truth(N);
+        std::vector<double> z_truth(N);
+
         // initialize data
         if (initialize) {
             printf("\ninitializing data\n");
@@ -82,6 +86,14 @@ int main(int argc, char* argv[])
             std::iota(u.begin(), u.end(), 1.0); // temporary: initialized so we can disable the 2D cases
             std::iota(x.begin(), x.end(), 1.0);
             std::iota(y.begin(), y.end(), 1.0);
+
+
+            for (size_t i = 0; i < N; i++) {
+                s_truth[i] = q[i] * r[i];
+                w_truth[i] = v[i] * u[i];
+                z_truth[i] = s_truth[i] * y[i];
+            }
+
         }
 
         // register all data into a DataManager
@@ -149,9 +161,45 @@ int main(int argc, char* argv[])
         algo.set_selected_chain(single_chain);
 #endif
 
-        // run the algorithm
-        printf("\nrunning algorithm...\n");
-        double progress = 0.0;
+        algo.set_validation_function([&s, &w, &z, &s_truth, &w_truth, &z_truth, &N](){
+
+            std::cout << "Inside validation function! " << std::endl;
+
+            double abs_difference = 0.0;
+
+            // NOTE: verification of S depends on the device transfer back over since it's a "dependent"
+            for (size_t i = 0; i < N; i++) {
+                abs_difference += std::abs(s[i] - s_truth[i]);
+                // std::cout << s[i] << "," << s_truth[i] << " ";
+                s[i] = 0.0;
+            }
+            // std::cout << std::endl;
+            std::cout << "abs difference for s (output kernel 0): " << abs_difference / N<< std::endl;
+
+
+            abs_difference = 0.0;
+            for (size_t i = 0; i < N; i++) {
+                abs_difference += std::abs(w[i] - w_truth[i]);
+                // std::cout << w[i] << "," << w_truth[i] << " ";
+                w[i] = 0.0;
+            }
+            // std::cout << std::endl;
+            std::cout << "abs difference for w (output kernel 1): " << abs_difference / N << std::endl;
+
+            abs_difference = 0.0;
+            for (size_t i = 0; i < N; i++) {
+                abs_difference += std::abs(z[i] - z_truth[i]);
+                // std::cout << z[i] << "," << z_truth[i] << " ";
+                z[i] = 0.0;
+            }
+            // std::cout << std::endl;
+            std::cout << "abs difference for z (output kernel 2): " << abs_difference / N<< std::endl << std::endl;
+
+        });;
+
+        // run the algorithm;
+        printf("\nrunning algorithm...\n");;
+        double progress = 0.0;;
         for (size_t ii = 0; ii < num_sims; ii++)
             algo();
 

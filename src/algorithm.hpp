@@ -5,6 +5,7 @@
 
 #include <set>
 #include <iomanip>
+#include <functional>
 
 #define DEBUG_ENABLED 0
 
@@ -132,6 +133,8 @@ class Algorithm
         return result;
     }
 
+    std::function<void()> validation_function = [](){};
+
     struct KernelSelector
     {
         //kernel
@@ -174,6 +177,10 @@ class Algorithm
 
     int total_operations_run = 0;
     int chain_runs = 1;
+
+    void set_validation_function(std::function<void()> infunc) {
+        validation_function = infunc;
+    }
 
 #ifdef DYNTUNE_SINGLE_CHAIN_RUN
     unsigned int selected_only_run = 0;
@@ -761,6 +768,9 @@ public:
                     */
                     // printf("RESULT: ops=%f, all=%f\n", elapsed, chain_time);
                 }
+
+                // run a stored validation function provided by the user
+                validation_function();
             }
 
         } // 0
