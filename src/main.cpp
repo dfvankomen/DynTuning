@@ -4,13 +4,12 @@
 // * Inputs and outputs are all ndarrays at the element level
 //
 
-#include "common.hpp"
 #include "Kokkos_Core.hpp"
-
 #include "algorithm.hpp"
-#include "kernel_vvm.hpp"
-#include "kernel_mvm.hpp"
+#include "common.hpp"
 #include "data.hpp"
+#include "kernel_mvm.hpp"
+#include "kernel_vvm.hpp"
 
 /*
 #define init_data_views(...) \
@@ -21,10 +20,9 @@
     std::get<find<hash(x)>(data_names)>(data_views)
 #define get_data_view_2(x, device) \
     std::get<device>(std::get<find<hash(x)>(data_names)>(data_views))
-#define get_data_view(...) get_data_view_macro(__VA_ARGS__, get_data_view_2, get_data_view_1)(__VA_ARGS__)
-#define get_data_view_host(x) get_data_view(x, 0)
-#define get_data_view_device(x) get_data_view(x, 1)
-#define get_data_view_scratch(x) get_data_view(x, 2)
+#define get_data_view(...) get_data_view_macro(__VA_ARGS__, get_data_view_2,
+get_data_view_1)(__VA_ARGS__) #define get_data_view_host(x) get_data_view(x, 0) #define
+get_data_view_device(x) get_data_view(x, 1) #define get_data_view_scratch(x) get_data_view(x, 2)
 */
 
 //=============================================================================
@@ -35,19 +33,19 @@ int main(int argc, char* argv[])
 {
 
     // seed any randomization!
-    std::srand ( unsigned ( std::time(0) ) );
+    std::srand(unsigned(std::time(0)));
 
     DeviceSelector device = set_device(argc, argv);
-    int                 N = set_N(argc, argv);
-    bool       reordering = set_reordering(argc, argv);
-    bool       initialize = set_initialize(argc, argv);
-    int          num_sims = set_num_sims(argc, argv);
-    int   num_chain_runs  = set_num_chain_runs(argc, argv);
+    int N                 = set_N(argc, argv);
+    bool reordering       = set_reordering(argc, argv);
+    bool initialize       = set_initialize(argc, argv);
+    int num_sims          = set_num_sims(argc, argv);
+    int num_chain_runs    = set_num_chain_runs(argc, argv);
 
 #ifdef DYNTUNE_SINGLE_CHAIN_RUN
     unsigned int single_chain = set_single_chain_run(argc, argv);
 #endif
-    
+
     // execution options
     KernelOptions options;
     if (device != DeviceSelector::AUTO)
@@ -58,12 +56,12 @@ int main(int argc, char* argv[])
     // Initialize Kokkos
     Kokkos::initialize();
     { // start Kokkos scope
-        
-        // first define all data 
-        std::vector<double> q(N);       
+
+        // first define all data
+        std::vector<double> q(N);
         std::vector<double> r(N);
         std::vector<double> s(N);
-        //Eigen::MatrixXd  t(N, N);
+        // Eigen::MatrixXd  t(N, N);
         std::vector<double> u(N);
         std::vector<double> v(N);
         std::vector<double> w(N);
@@ -76,42 +74,44 @@ int main(int argc, char* argv[])
         std::vector<double> z_truth(N);
 
         // initialize data
-        if (initialize) {
+        if (initialize)
+        {
             printf("\ninitializing data\n");
             std::iota(q.begin(), q.end(), 1.0);
             std::iota(r.begin(), r.end(), 1.0);
             std::iota(s.begin(), s.end(), 1.0);
-            //{ int ij = 0; for (int i=0; i<N; i++) for (int j=0; j<N; j++) t(i,j) = static_cast<double>(ij++); }
+            //{ int ij = 0; for (int i=0; i<N; i++) for (int j=0; j<N; j++) t(i,j) =
+            //static_cast<double>(ij++); }
             std::iota(v.begin(), v.end(), 1.0);
-            std::iota(u.begin(), u.end(), 1.0); // temporary: initialized so we can disable the 2D cases
+            std::iota(u.begin(),
+                      u.end(),
+                      1.0); // temporary: initialized so we can disable the 2D cases
             std::iota(x.begin(), x.end(), 1.0);
             std::iota(y.begin(), y.end(), 1.0);
 
 
-            for (size_t i = 0; i < N; i++) {
+            for (size_t i = 0; i < N; i++)
+            {
                 s_truth[i] = q[i] * r[i];
                 w_truth[i] = v[i] * u[i];
                 z_truth[i] = s_truth[i] * y[i];
             }
-
         }
 
         // register all data into a DataManager
         // Has to be constexpr to use later in a constexpr invocation of find()
         // I have not found a cleaner way to write this...
         // I feel like some kind of recursive function or macro combo should work...
-        constexpr auto data_names = std::make_tuple(
-            HashedName<hash("q")>(),
-            HashedName<hash("r")>(),
-            HashedName<hash("s")>(),
-            //HashedName<hash("t")>(),
-            HashedName<hash("u")>(),
-            HashedName<hash("v")>(),
-            HashedName<hash("w")>(),
-            HashedName<hash("x")>(),
-            HashedName<hash("y")>(),
-            HashedName<hash("z")>()
-        );
+        constexpr auto data_names = std::make_tuple(HashedName<hash("q")>(),
+                                                    HashedName<hash("r")>(),
+                                                    HashedName<hash("s")>(),
+                                                    // HashedName<hash("t")>(),
+                                                    HashedName<hash("u")>(),
+                                                    HashedName<hash("v")>(),
+                                                    HashedName<hash("w")>(),
+                                                    HashedName<hash("x")>(),
+                                                    HashedName<hash("y")>(),
+                                                    HashedName<hash("z")>());
         /*
         init_data_views(q, r, s, t, u, v, w, x, y, z);
         auto& q_views = get_data_view("q");
@@ -131,7 +131,7 @@ int main(int argc, char* argv[])
         auto& q_views = std::get<find<hash("q")>(data_names)>(data_views);
         auto& r_views = std::get<find<hash("r")>(data_names)>(data_views);
         auto& s_views = std::get<find<hash("s")>(data_names)>(data_views);
-        //auto& t_views = std::get<find<hash("t")>(data_names)>(data_views);
+        // auto& t_views = std::get<find<hash("t")>(data_names)>(data_views);
         auto& u_views = std::get<find<hash("u")>(data_names)>(data_views);
         auto& v_views = std::get<find<hash("v")>(data_names)>(data_views);
         auto& w_views = std::get<find<hash("w")>(data_names)>(data_views);
@@ -141,16 +141,19 @@ int main(int argc, char* argv[])
 
         // define all kernels
         printf("\nbuilding kernels\n");
-        auto k1 = KernelVVM(options, std::as_const(q_views), std::as_const(r_views), s_views); // vvm
-        //auto k2 = KernelMVM(options, std::as_const(t_views), std::as_const(s_views), u_views); // mvm
-        auto k3 = KernelVVM(options, std::as_const(v_views), std::as_const(u_views), w_views); // vvm
-        //auto k5 = KernelVVM(options, std::as_const(v_views), std::as_const(u_views), w_views); // vvm
-        auto k4 = KernelVVM(options, std::as_const(s_views), std::as_const(y_views), z_views); // vvm
-       
-
+        auto k1 =
+          KernelVVM(options, std::as_const(q_views), std::as_const(r_views), s_views); // vvm
+        // auto k2 = KernelMVM(options, std::as_const(t_views), std::as_const(s_views), u_views); //
+        // mvm
+        auto k3 =
+          KernelVVM(options, std::as_const(v_views), std::as_const(u_views), w_views); // vvm
+        // auto k5 = KernelVVM(options, std::as_const(v_views), std::as_const(u_views), w_views); //
+        // vvm
+        auto k4 =
+          KernelVVM(options, std::as_const(s_views), std::as_const(y_views), z_views); // vvm
 
         // register all kernels info an Algorithm
-        //auto kernels = pack(k1, k2, k3, k4);
+        // auto kernels = pack(k1, k2, k3, k4);
         printf("\nbuilding algorithm\n");
         auto kernels = pack(k1, k3, k4);
         Algorithm algo(kernels, data_views, reordering);
@@ -161,45 +164,57 @@ int main(int argc, char* argv[])
         algo.set_selected_chain(single_chain);
 #endif
 
-        algo.set_validation_function([&s, &w, &z, &s_truth, &w_truth, &z_truth, &N](){
+        algo.set_validation_function(
+          [&s, &w, &z, &s_truth, &w_truth, &z_truth, &N]()
+          {
+#ifdef DYNTUNE_DEBUG_ENABLED
+              std::cout << "Inside validation function! " << std::endl;
 
-            std::cout << "Inside validation function! " << std::endl;
+              double abs_difference = 0.0;
 
-            double abs_difference = 0.0;
+              // NOTE: verification of S depends on the device transfer back over since it's a
+              // "dependent"
+              for (size_t i = 0; i < N; i++)
+              {
+                  abs_difference += std::abs(s[i] - s_truth[i]);
+                  // std::cout << s[i] << "," << s_truth[i] << " ";
+                  s[i] = 0.0;
+              }
+              // std::cout << std::endl;
+              std::cout << "abs difference for s (output kernel 0): " << abs_difference / N
+                        << std::endl;
 
-            // NOTE: verification of S depends on the device transfer back over since it's a "dependent"
-            for (size_t i = 0; i < N; i++) {
-                abs_difference += std::abs(s[i] - s_truth[i]);
-                // std::cout << s[i] << "," << s_truth[i] << " ";
-                s[i] = 0.0;
-            }
-            // std::cout << std::endl;
-            std::cout << "abs difference for s (output kernel 0): " << abs_difference / N<< std::endl;
 
+              abs_difference = 0.0;
+              for (size_t i = 0; i < N; i++)
+              {
+                  abs_difference += std::abs(w[i] - w_truth[i]);
+                  // std::cout << w[i] << "," << w_truth[i] << " ";
+                  w[i] = 0.0;
+              }
+              // std::cout << std::endl;
+              std::cout << "abs difference for w (output kernel 1): " << abs_difference / N
+                        << std::endl;
 
-            abs_difference = 0.0;
-            for (size_t i = 0; i < N; i++) {
-                abs_difference += std::abs(w[i] - w_truth[i]);
-                // std::cout << w[i] << "," << w_truth[i] << " ";
-                w[i] = 0.0;
-            }
-            // std::cout << std::endl;
-            std::cout << "abs difference for w (output kernel 1): " << abs_difference / N << std::endl;
-
-            abs_difference = 0.0;
-            for (size_t i = 0; i < N; i++) {
-                abs_difference += std::abs(z[i] - z_truth[i]);
-                // std::cout << z[i] << "," << z_truth[i] << " ";
-                z[i] = 0.0;
-            }
-            // std::cout << std::endl;
-            std::cout << "abs difference for z (output kernel 2): " << abs_difference / N<< std::endl << std::endl;
-
-        });;
+              abs_difference = 0.0;
+              for (size_t i = 0; i < N; i++)
+              {
+                  abs_difference += std::abs(z[i] - z_truth[i]);
+                  // std::cout << z[i] << "," << z_truth[i] << " ";
+                  z[i] = 0.0;
+              }
+              // std::cout << std::endl;
+              std::cout << "abs difference for z (output kernel 2): " << abs_difference / N
+                        << std::endl
+                        << std::endl;
+#endif
+          });
 
         // run the algorithm;
-        printf("\nrunning algorithm...\n");;
-        double progress = 0.0;;
+        printf("\nrunning algorithm...\n");
+        ;
+        double progress = 0.0;
+        ;
         for (size_t ii = 0; ii < num_sims; ii++)
             algo();
 
@@ -208,10 +223,10 @@ int main(int argc, char* argv[])
         algo.print_results();
 
         // TESTS
-        //TestVVM(k1, q, r, s);
-        //TestMVM(k2, t, s, u);
-        //TestVVM(k3, v, u, w);
-        //TestVVM(k4, x, y, z);
+        // TestVVM(k1, q, r, s);
+        // TestMVM(k2, t, s, u);
+        // TestVVM(k3, v, u, w);
+        // TestVVM(k4, x, y, z);
 
     } // end Kokkos scope
     Kokkos::finalize();
