@@ -145,6 +145,8 @@ class Algorithm
         std::vector<size_t>         input_id      = std::vector<size_t>();
         std::vector<size_t>         output_id     = std::vector<size_t>();
         std::vector<DeviceSelector> output_device = std::vector<DeviceSelector>();
+        std::vector<size_t> output_id_local = std::vector<size_t>();
+        std::vector<size_t> input_id_local = std::vector<size_t>();
     };
 
     std::vector<uint32_t> chains_total_input_transfers_d2h;
@@ -560,6 +562,7 @@ class Algorithm
                             ksel_l.output_device.push_back(device);
 
                             // store the index
+                            ksel_l.output_id_local.push_back(jl);
                             ksel_l.output_id.push_back(j);
 
                             // update the number of output transfers 
@@ -571,6 +574,7 @@ class Algorithm
                         } else {
 
                             // store the index
+                            ksel_l.input_id_local.push_back(jl);
                             ksel_l.input_id.push_back(j);
 
                             // update the number of input transfers
@@ -584,6 +588,32 @@ class Algorithm
                     }); // 3
                 
                 }}); // 2
+
+#ifdef DYNTUNE_DEBUG_ENABLED
+                std::cout << "Chain, Kernel " << i_chain << ", " << _il << " Output IDs (global): ";
+                for (auto opid : ksel_l.output_id) {
+                    std::cout << opid << " ";
+                }
+                std::cout << std::endl;
+
+                std::cout << "Chain, Kernel " << i_chain << ", " << _il << " Input IDs (global): ";
+                for (auto opid : ksel_l.input_id) {
+                    std::cout << opid << " ";
+                }
+                std::cout << std::endl;
+
+                std::cout << "Chain, Kernel " << i_chain << ", " << _il << " Output IDs (local): ";
+                for (auto opid : ksel_l.output_id_local) {
+                    std::cout << opid << " ";
+                }
+                std::cout << std::endl;
+
+                std::cout << "Chain, Kernel " << i_chain << ", " << _il << " Input IDs (local): ";
+                for (auto opid : ksel_l.input_id_local) {
+                    std::cout << opid << " ";
+                }
+                std::cout << std::endl;
+#endif
             
             } // 1
             
