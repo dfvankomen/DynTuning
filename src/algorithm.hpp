@@ -534,6 +534,8 @@ class Algorithm
 
                                             // OK, we ACTUALLY DO need to move this data
                                             device = ksel_r.kernel_device;
+
+                                            // TODO: also need to store which "local" Id matches
                                         }
 
                                     } // 7
@@ -724,11 +726,13 @@ public:
                         auto views_h = std::get<0>(k.data_views_);
                         auto views_d = std::get<1>(k.data_views_);
 
-                        // 3: copy inputs for first kernel if needed
-                        if ((first) && (kernel_device == DeviceSelector::DEVICE)) {
+                        // 3: copy data over to device if it needs it
+                        //    NOTE: thsi used to apply only to the first kernel, but the first operator was causing
+                        //    data to get skipped further down chains 
+                        if ((kernel_device == DeviceSelector::DEVICE)) {
 
                             // 4: loop over inputs only
-                            for (size_t j : ksel.input_id)
+                            for (size_t j : ksel.input_id_local)
                             {
                                 // 5: get the host view
                                 iter_tuple(views_h, [&]<typename HostViewType>(size_t jh, HostViewType& view_h) { if (jh == j)
@@ -770,9 +774,9 @@ public:
 
                         // 3: loop over the outputs
                         //for (size_t j : ksel.output_id)
-                        for (auto idx = 0; idx < ksel.output_id.size(); idx++)
+                        for (auto idx = 0; idx < ksel.output_id_local.size(); idx++)
                         {
-                            size_t j = ksel.output_id[idx];
+                            size_t j = ksel.output_id_local[idx];
                             DeviceSelector view_device = ksel.output_device[idx];
                             // no need to copy if data is already on the correct device
                             if (view_device == kernel_device) continue;
