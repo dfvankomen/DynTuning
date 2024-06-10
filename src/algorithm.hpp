@@ -584,7 +584,7 @@ class Algorithm
                                 chains_total_input_transfers_d2h[i_chain] += 1; 
                             else
                                 chains_total_input_transfers_h2d[i_chain] += 1;
-
+                        
                         }
                         
                     }); // 3
@@ -823,10 +823,12 @@ public:
 
 
                 // execute the validation function (could be null)
+#ifdef DYTUNE_DEBUG_ENABLED
                 std::cout << "Finished chain " << i_chain << std::endl;
                 std::cout << "Expected transfers (d2h), input: " << chains_total_input_transfers_d2h[i_chain] << " output: " << chains_total_output_transfers_d2h[i_chain] << std::endl;
                 std::cout << "Expected transfers (h2d), input: " << chains_total_input_transfers_h2d[i_chain] << " output: " << chains_total_output_transfers_h2d[i_chain] << std::endl;
                 std::cout << "Tracked transfers, input: " << tracked_input_transfers << " output: " << tracked_output_transfers << std::endl;
+#endif
 
                 { // debug print
                     /*
