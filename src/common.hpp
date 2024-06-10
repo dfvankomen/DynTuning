@@ -74,6 +74,33 @@ iter_tuple(const std::tuple<T...>& t, const LambdaType& lambda)
 }
 
 
+// base case for recursion of find_tuple
+template<typename LambdaType, std::size_t I = 0, typename... T>
+inline typename std::enable_if<I == sizeof...(T), void>::type
+find_tuple(const std::tuple<T...>& t, std::size_t idx, const LambdaType& lambda)
+{
+    // if we get to this point, then there's no index here, so we 
+    throw std::out_of_range("Could not find index " + std::to_string(idx) + " in requested tuple. The value is too large!");
+}
+
+// all other cases, it's a recursive template that iterates through and finds the item in the tuple
+// note that the lambda must have the right typing cast when calling it, as it needs to receive itself
+template<typename LambdaType, std::size_t I = 0, typename... T>
+inline typename std::enable_if<I < sizeof...(T), void>::type
+find_tuple(const std::tuple<T...>& t, std::size_t idx, const LambdaType& lambda)
+{
+
+    // if we've found the index, we can execute the lambda and return out
+    if (I == idx){
+        auto &elem = std::get<I>(t);
+        lambda(elem);
+    }
+    // otherwise we continue to recurse through until we find the lambda
+    else {
+        find_tuple<LambdaType, I+1, T...>(t, idx, lambda);
+    }
+}
+
 /*
 // utility function for getting the ith item of a tuple
 template<std::size_t I = 0, typename... T>
