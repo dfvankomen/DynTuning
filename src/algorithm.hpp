@@ -147,6 +147,11 @@ class Algorithm
         std::vector<DeviceSelector> output_device = std::vector<DeviceSelector>();
     };
 
+    std::vector<uint32_t> chains_total_input_transfers_d2h;
+    std::vector<uint32_t> chains_total_output_transfers_d2h;
+    std::vector<uint32_t> chains_total_input_transfers_h2d;
+    std::vector<uint32_t> chains_total_output_transfers_h2d;
+
   public:
 
     // data dependencies define kernel dependencies
@@ -416,11 +421,29 @@ class Algorithm
             }
         }
 
+        // now that chains are created, create a list of IDs based on the number
+        kernel_chain_ids.resize(kernel_chains.size());
+        std::iota(kernel_chain_ids.begin(), kernel_chain_ids.end(), 0);
+
+        // ==============
         // set up data transfers
 
-        // 0: loop over kernel chains
-        for (std::vector<KernelSelector>& kernel_chain : kernel_chains)
+        // make sure to update the size of the stored number of transfers for each chain
+        chains_total_input_transfers_d2h.resize(kernel_chains.size());
+        std::fill(chains_total_input_transfers_d2h.begin(), chains_total_input_transfers_d2h.end(), 0);
+        chains_total_output_transfers_d2h.resize(kernel_chains.size());
+        std::fill(chains_total_output_transfers_d2h.begin(), chains_total_output_transfers_d2h.end(), 0);
+        chains_total_input_transfers_h2d.resize(kernel_chains.size());
+        std::fill(chains_total_input_transfers_h2d.begin(), chains_total_input_transfers_h2d.end(), 0);
+        chains_total_output_transfers_h2d.resize(kernel_chains.size());
+        std::fill(chains_total_output_transfers_h2d.begin(), chains_total_output_transfers_h2d.end(), 0);
+
+
+        // 0: loop over kernel chains via id for additional storage
+        for (auto &i_chain : kernel_chain_ids)
+        // for (std::vector<KernelSelector>& kernel_chain : kernel_chains)
         { // kernel_chain
+            std::vector<KernelSelector>& kernel_chain = kernel_chains[i_chain];
 
             // 1: loop over kernels in this chain
             for (size_t ksel_l_id = 0; ksel_l_id < kernel_chain.size(); ksel_l_id++)
@@ -539,10 +562,22 @@ class Algorithm
                             // store the index
                             ksel_l.output_id.push_back(j);
 
+                            // update the number of output transfers 
+                            if (device == DeviceSelector::HOST)
+                                chains_total_output_transfers_d2h[i_chain] += 1; 
+                            else
+                                chains_total_output_transfers_h2d[i_chain] += 1;
+
                         } else {
 
                             // store the index
                             ksel_l.input_id.push_back(j);
+
+                            // update the number of input transfers
+                            if (device == DeviceSelector::HOST)
+                                chains_total_input_transfers_d2h[i_chain] += 1; 
+                            else
+                                chains_total_input_transfers_h2d[i_chain] += 1;
 
                         }
                         
@@ -556,13 +591,12 @@ class Algorithm
 
         // with the vector of kernels now created, we can create a list of IDs to use to store more
         // information about the profiling
-        kernel_chain_ids.resize(kernel_chains.size());
-        std::iota(kernel_chain_ids.begin(), kernel_chain_ids.end(), 0);
 
         std::cout << std::endl << "kernel chains" << std::endl;
         // for (std::vector<KernelSelector> kernel_chain : kernel_chains) {
         for (uint32_t i_chain : kernel_chain_ids) {
 
+            // NOTE: this copies, should it grab by reference?
             std::vector<KernelSelector> kernel_chain = kernel_chains[i_chain];
 
             bool first_k = true;
@@ -641,6 +675,10 @@ public:
                 // first selector may need to copy inputs    
                 bool first = true;
 
+                // trackers for input and output transfers of data
+                uint32_t tracked_input_transfers = 0;
+                uint32_t tracked_output_transfers = 0;
+
                 // 1: iterate through the chain
                 for (KernelSelector ksel : kernel_chain)
                 { // ksel, i
@@ -678,6 +716,9 @@ public:
                                         // NOTE: remember that deep copy is (destination, source)
                                         Kokkos::deep_copy(view_d, view_h);
                                         elapsed += timer.seconds();
+
+                                        // tick up our successful input transfers
+                                        tracked_input_transfers++;
 
                                     }}); // 6
 
@@ -728,6 +769,9 @@ public:
                                     }
                                     elapsed += timer.seconds();
 
+                                    // tick up our tracked output transfers
+                                    tracked_output_transfers++;
+
                                 }}); // 5
 
                             }}); // 4
@@ -743,6 +787,12 @@ public:
                 chain_times[i_chain] += chain_time;
                 chain_elapsed_times[i_chain] += elapsed;
 
+
+                // execute the validation function (could be null)
+                std::cout << "Finished chain " << i_chain << std::endl;
+                std::cout << "Expected transfers (d2h), input: " << chains_total_input_transfers_d2h[i_chain] << " output: " << chains_total_output_transfers_d2h[i_chain] << std::endl;
+                std::cout << "Expected transfers (h2d), input: " << chains_total_input_transfers_h2d[i_chain] << " output: " << chains_total_output_transfers_h2d[i_chain] << std::endl;
+                std::cout << "Tracked transfers, input: " << tracked_input_transfers << " output: " << tracked_output_transfers << std::endl;
 
                 { // debug print
                     /*
