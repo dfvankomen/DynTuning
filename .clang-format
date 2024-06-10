@@ -24,6 +24,7 @@ BreakBeforeBraces: Allman
 ColumnLimit: 100
 IndentWidth: 4
 IncludeBlocks: Regroup
+LambdaBodyIndentation: OuterScope
 Language: Cpp
 MaxEmptyLinesToKeep: 3
 PointerAlignment: Left
