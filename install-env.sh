@@ -1,6 +1,7 @@
 #!/bin/bash
   
 # install dependencies
+sudo apt-get update
 sudo apt-get install -y cmake
 
 # install cuda
