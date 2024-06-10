@@ -289,77 +289,69 @@ class Algorithm
             iter_tuple(std::get<0>(kernel_l.data_views_),
                        [&]<typename ViewTypeL>(size_t jl, ViewTypeL& view_l) { // view_l
                 // 2: check is_const for jlth data view
-                iter_tuple(kernel_l.is_const_,
-                           [&](size_t _jl, bool is_const_l)
-                {
-                    if (_jl == jl)
-                    { // is_const_l
-                        // bool is_const_l = false;
+                find_tuple(kernel_l.is_const_,
+                           jl,
+                           [&](bool is_const_l) { // is_const_l
+                    // bool is_const_l = false;
 
-                        bool is_match = false;
+                    bool is_match = false;
 
-                        // 3: loop over right kernels
-                        iter_tuple(kernels_,
-                                   [&]<typename KernelTypeJ>(size_t ir,
-                                                             KernelTypeJ& kernel_r) { // kernel_r
-                            // only look at kernels to the right
-                            if (ir <= il)
-                                return;
+                    // 3: loop over right kernels
+                    iter_tuple(kernels_,
+                               [&]<typename KernelTypeJ>(size_t ir,
+                                                         KernelTypeJ& kernel_r) { // kernel_r
+                        // only look at kernels to the right
+                        if (ir <= il)
+                            return;
 
-                            // 4: loop over right data views
-                            iter_tuple(std::get<0>(kernel_r.data_views_),
-                                       [&]<typename ViewTypeR>(size_t jr,
-                                                               ViewTypeR& view_r) { // view_r
-                                // 5: check is_const for jrth data view
-                                iter_tuple(kernel_r.is_const_,
-                                           [&](size_t _jr, bool is_const_r)
+                        // 4: loop over right data views
+                        iter_tuple(std::get<0>(kernel_r.data_views_),
+                                   [&]<typename ViewTypeR>(size_t jr,
+                                                           ViewTypeR& view_r) { // view_r
+                            // 5: check is_const for jrth data view
+                            find_tuple(kernel_r.is_const_,
+                                       jr,
+                                       [&](bool is_const_r) { // is_const_r
+                                // bool is_const_r = false;
+
+                                // check if there is a data dependency between
+                                // these views
+                                if ((view_l.data() == view_r.data()) && (!is_const_l) &&
+                                    (is_const_r))
                                 {
-                                    if (_jr == jr)
-                                    { // is_const_r
-                                        // bool is_const_r = false;
+                                    // view_r depends on view_l
+                                    outputs.emplace(std::make_tuple(il, jl),
+                                                    std::make_tuple(ir, jr));
+                                    inputs.emplace(std::make_tuple(ir, jr),
+                                                   std::make_tuple(il, jl));
 
-                                        // check if there is a data dependency between
-                                        // these views
-                                        if ((view_l.data() == view_r.data()) && (!is_const_l) &&
-                                            (is_const_r))
-                                        {
-                                            // view_r depends on view_l
-                                            outputs.emplace(std::make_tuple(il, jl),
-                                                            std::make_tuple(ir, jr));
-                                            inputs.emplace(std::make_tuple(ir, jr),
-                                                           std::make_tuple(il, jl));
+                                    // kernel_r depends on kernel_l
+                                    depends_on[ir].insert(il);
+                                    dependents[il].insert(ir);
 
-                                            // kernel_r depends on kernel_l
-                                            depends_on[ir].insert(il);
-                                            dependents[il].insert(ir);
-
-                                            is_match = true;
-                                            return;
-                                        }
-                                    }
-                                }); // is_const_r
-                                if (is_match)
+                                    is_match = true;
                                     return;
-
-                            }); // view_r
+                                }
+                            }); // is_const_r
                             if (is_match)
                                 return;
 
-                        }); // kernel_r
+                        }); // view_r
                         if (is_match)
                             return;
 
-                        // if entry wasn't added yet, map it to null
-                        if (is_const_l)
-                        { // input
-                            inputs.emplace(std::make_tuple(il, jl),
-                                           std::make_tuple(null_v, null_v));
-                        }
-                        else
-                        { // output
-                            outputs.emplace(std::make_tuple(il, jl),
-                                            std::make_tuple(null_v, null_v));
-                        }
+                    }); // kernel_r
+                    if (is_match)
+                        return;
+
+                    // if entry wasn't added yet, map it to null
+                    if (is_const_l)
+                    { // input
+                        inputs.emplace(std::make_tuple(il, jl), std::make_tuple(null_v, null_v));
+                    }
+                    else
+                    { // output
+                        outputs.emplace(std::make_tuple(il, jl), std::make_tuple(null_v, null_v));
                     }
                 }); // is_const_l, is_match
 
@@ -500,169 +492,163 @@ class Algorithm
                 size_t _il             = ksel_l.kernel_id;
 
                 // 2: find this kernel
-                iter_tuple(kernels_,
-                           [&]<typename KernelTypeL>(size_t il, KernelTypeL& kernel_l)
-                {
-                    if (il == _il)
-                    { // kernel_l
+                find_tuple(kernels_,
+                           _il,
+                           [&]<typename KernelTypeL>(KernelTypeL& kernel_l) { // kernel_l
+                    // 3: loop over host views in left kernel
+                    iter_tuple(std::get<0>(kernel_l.data_views_),
+                               [&]<typename ViewTypeL>(size_t jl, ViewTypeL& view_l) { // view_l
+                        // for every data param, check if needs to be copied to a different
+                        // device default to the same device as the kernel
+                        DeviceSelector device = ksel_l.kernel_device;
 
-                        // 3: loop over host views in left kernel
-                        iter_tuple(std::get<0>(kernel_l.data_views_),
-                                   [&]<typename ViewTypeL>(size_t jl, ViewTypeL& view_l) { // view_l
-                            // for every data param, check if needs to be copied to a different
-                            // device default to the same device as the kernel
-                            DeviceSelector device = ksel_l.kernel_device;
-
-                            // first, is this view an output?
-                            bool is_output = false;
-                            for (const auto& item : outputs)
+                        // first, is this view an output?
+                        bool is_output = false;
+                        for (const auto& item : outputs)
+                        {
+                            const auto& key = item.first;
+                            if ((_il == std::get<0>(key)) && (jl == std::get<1>(key)))
                             {
-                                const auto& key = item.first;
-                                if ((il == std::get<0>(key)) && (jl == std::get<1>(key)))
-                                {
-                                    is_output = true;
-                                    break;
-                                }
+                                is_output = true;
+                                break;
                             }
+                        }
 
-                            // NOTE, we could handle pre-moves here for device inputs on the
-                            // first kernel
+                        // NOTE, we could handle pre-moves here for device inputs on the
+                        // first kernel
 
-                            // 4: only outputs may need to be copied
-                            if (is_output)
+                        // 4: only outputs may need to be copied
+                        if (is_output)
+                        {
+
+                            // if this is the last kernel we need to copy outputs back to
+                            // the host
+                            if (ksel_l_id >= kernel_chain.size() - 1)
                             {
 
-                                // if this is the last kernel we need to copy outputs back to
-                                // the host
-                                if (ksel_l_id >= kernel_chain.size() - 1)
-                                {
+                                device = DeviceSelector::HOST;
 
-                                    device = DeviceSelector::HOST;
-
-                                    // 5: this is not the last kernel so it may have dependents
-                                }
-                                else
-                                {
-
-                                    // look for downstream dependents
-                                    std::vector<size_t> dependents = std::vector<size_t>();
-                                    for (const auto& item : inputs)
-                                    {
-                                        const auto& key   = item.first;
-                                        const auto& value = item.second;
-
-                                        // find which kernels depend on this left view
-                                        if ((il == std::get<0>(value)) &&
-                                            (jl == std::get<1>(value)))
-                                        {
-
-                                            // we only care about the kernel now
-                                            size_t ir = std::get<0>(key);
-                                            dependents.push_back(ir);
-                                        }
-                                    }
-
-                                    // if no dependents, the data can be safely moved back to
-                                    // the host
-                                    if (dependents.size() == 0)
-                                    {
-                                        device = DeviceSelector::HOST;
-
-                                        // 6: at least 1 dependent, check if device is different
-                                    }
-                                    else
-                                    {
-                                        // 7: loop over the rest of the kernel chain and find
-                                        // dependents in order
-                                        for (size_t ksel_r_id = ksel_l_id + 1;
-                                             ksel_r_id < kernel_chain.size();
-                                             ksel_r_id++)
-                                        {
-                                            KernelSelector& ksel_r = kernel_chain[ksel_r_id];
-                                            size_t ir              = ksel_r.kernel_id;
-                                            bool is_dependent      = false;
-
-                                            // check if this right kernel is in the list of
-                                            // dependents
-                                            for (size_t _ir : dependents)
-                                            {
-                                                if (_ir == ir)
-                                                {
-                                                    is_dependent = true;
-                                                    break;
-                                                }
-                                            }
-                                            // if this kernel isn't a dependent, skip it!
-                                            if (!is_dependent)
-                                                continue;
-
-                                            // check if ANY downstream dependents have a
-                                            // different device than this kernel
-                                            if (ksel_r.kernel_device != device)
-                                            {
-
-                                                // OK, we ACTUALLY DO need to move this data
-                                                device = ksel_r.kernel_device;
-
-                                                // TODO: also need to store which "local" Id
-                                                // matches
-                                            }
-
-                                        } // 7
-
-                                    } // 6
-
-                                } // 5
-
-                            } // 4
-
-                            // now we need to find the index of each of the kernel views in the
-                            // original views tuple 4: loop over the views in the views tuple
-                            size_t j = 0;
-                            iter_tuple(
-                              views_,
-                              [&]<typename ViewType>(
-                                size_t _j,
-                                ViewType& _views) { // note "_views" is actually a tuple of 3
-                                                    // views, one for each allocation type
-                                // compare host views
-                                auto view = std::get<0>(_views);
-                                if (view_l.data() == view.data())
-                                    j = _j;
-
-                            }); // 4
-
-                            if (is_output)
-                            {
-                                // now we know the device this view will need to be copied to
-                                ksel_l.output_device.push_back(device);
-
-                                // store the index
-                                ksel_l.output_id_local.push_back(jl);
-                                ksel_l.output_id.push_back(j);
-
-                                // update the number of output transfers
-                                if (device == DeviceSelector::HOST)
-                                    chains_total_output_transfers_d2h[i_chain] += 1;
-                                else
-                                    chains_total_output_transfers_h2d[i_chain] += 1;
+                                // 5: this is not the last kernel so it may have dependents
                             }
                             else
                             {
-                                // store the index
-                                ksel_l.input_id_local.push_back(jl);
-                                ksel_l.input_id.push_back(j);
 
-                                // update the number of input transfers
-                                if (device == DeviceSelector::HOST)
-                                    chains_total_input_transfers_d2h[i_chain] += 1;
+                                // look for downstream dependents
+                                std::vector<size_t> dependents = std::vector<size_t>();
+                                for (const auto& item : inputs)
+                                {
+                                    const auto& key   = item.first;
+                                    const auto& value = item.second;
+
+                                    // find which kernels depend on this left view
+                                    if ((_il == std::get<0>(value)) && (jl == std::get<1>(value)))
+                                    {
+
+                                        // we only care about the kernel now
+                                        size_t ir = std::get<0>(key);
+                                        dependents.push_back(ir);
+                                    }
+                                }
+
+                                // if no dependents, the data can be safely moved back to
+                                // the host
+                                if (dependents.size() == 0)
+                                {
+                                    device = DeviceSelector::HOST;
+
+                                    // 6: at least 1 dependent, check if device is different
+                                }
                                 else
-                                    chains_total_input_transfers_h2d[i_chain] += 1;
-                            }
+                                {
+                                    // 7: loop over the rest of the kernel chain and find
+                                    // dependents in order
+                                    for (size_t ksel_r_id = ksel_l_id + 1;
+                                         ksel_r_id < kernel_chain.size();
+                                         ksel_r_id++)
+                                    {
+                                        KernelSelector& ksel_r = kernel_chain[ksel_r_id];
+                                        size_t ir              = ksel_r.kernel_id;
+                                        bool is_dependent      = false;
 
-                        }); // 3
-                    }
-                }); // 2
+                                        // check if this right kernel is in the list of
+                                        // dependents
+                                        for (size_t _ir : dependents)
+                                        {
+                                            if (_ir == ir)
+                                            {
+                                                is_dependent = true;
+                                                break;
+                                            }
+                                        }
+                                        // if this kernel isn't a dependent, skip it!
+                                        if (!is_dependent)
+                                            continue;
+
+                                        // check if ANY downstream dependents have a
+                                        // different device than this kernel
+                                        if (ksel_r.kernel_device != device)
+                                        {
+
+                                            // OK, we ACTUALLY DO need to move this data
+                                            device = ksel_r.kernel_device;
+
+                                            // TODO: also need to store which "local" Id
+                                            // matches
+                                        }
+
+                                    } // 7
+
+                                } // 6
+
+                            } // 5
+
+                        } // 4
+
+                        // now we need to find the index of each of the kernel views in the
+                        // original views tuple 4: loop over the views in the views tuple
+                        size_t j = 0;
+                        iter_tuple(views_,
+                                   [&]<typename ViewType>(size_t _j, ViewType& _views)
+                        {
+                            // note "_views" is actually a tuple of 3 views, one for each allocation
+                            // type
+
+                            // compare host views
+                            auto view = std::get<0>(_views);
+                            if (view_l.data() == view.data())
+                                j = _j;
+                        }); // 4
+
+                        if (is_output)
+                        {
+                            // now we know the device this view will need to be copied to
+                            ksel_l.output_device.push_back(device);
+
+                            // store the index
+                            ksel_l.output_id_local.push_back(jl);
+                            ksel_l.output_id.push_back(j);
+
+                            // update the number of output transfers
+                            if (device == DeviceSelector::HOST)
+                                chains_total_output_transfers_d2h[i_chain] += 1;
+                            else
+                                chains_total_output_transfers_h2d[i_chain] += 1;
+                        }
+                        else
+                        {
+                            // store the index
+                            ksel_l.input_id_local.push_back(jl);
+                            ksel_l.input_id.push_back(j);
+
+                            // update the number of input transfers
+                            if (device == DeviceSelector::HOST)
+                                chains_total_input_transfers_d2h[i_chain] += 1;
+                            else
+                                chains_total_input_transfers_h2d[i_chain] += 1;
+                        }
+
+                    }); // 3
+                });     // 2
 
 #ifdef DYNTUNE_DEBUG_ENABLED
                 std::cout << "Chain, Kernel " << i_chain << ", " << _il << " Output IDs (global): ";
@@ -803,85 +789,23 @@ class Algorithm
                     DeviceSelector kernel_device = ksel.kernel_device;
 
                     // 2: find this kernel
-                    iter_tuple(kernels_,
-                               [&]<typename KernelType>(size_t _i, KernelType& k)
-                    {
-                        if (_i == i)
-                        { // k
+                    find_tuple(kernels_,
+                               i,
+                               [&]<typename KernelType>(KernelType& k) { // k
+                        // get the data views
+                        auto views_h = std::get<0>(k.data_views_);
+                        auto views_d = std::get<1>(k.data_views_);
 
-                            // get the data views
-                            auto views_h = std::get<0>(k.data_views_);
-                            auto views_d = std::get<1>(k.data_views_);
+                        // 3: copy data over to device if it needs it
+                        //    NOTE: this used to apply only to the first kernel, but the first
+                        //    operator was causing data to get skipped further down chains
+                        if ((kernel_device == DeviceSelector::DEVICE))
+                        {
 
-                            // 3: copy data over to device if it needs it
-                            //    NOTE: thsi used to apply only to the first kernel, but the first
-                            //    operator was causing data to get skipped further down chains
-                            if ((kernel_device == DeviceSelector::DEVICE))
+                            // 4: loop over inputs only
+                            for (size_t j : ksel.input_id_local)
                             {
-
-                                // 4: loop over inputs only
-                                for (size_t j : ksel.input_id_local)
-                                {
-                                    // 5: get the host view
-                                    iter_tuple(
-                                      views_h,
-                                      [&]<typename HostViewType>(size_t jh, HostViewType& view_h)
-                                    {
-                                        if (jh == j)
-                                        { // view_h
-
-                                            // 6: get the device view
-                                            iter_tuple(
-                                              views_d,
-                                              [&]<typename DeviceViewType>(size_t jd,
-                                                                           DeviceViewType& view_d)
-                                            {
-                                                if (jd == j)
-                                                { // view_d
-
-                                                    // copy the data
-#ifdef DYNTUNE_DEBUG_ENABLED
-                                                    std::cout
-                                                      << "chain_" << i_chain << ": ker_" << i
-                                                      << ":  INPUT -> host-2-device : view " << jh
-                                                      << "->" << jd << std::endl;
-#endif
-                                                    timer.reset(); // start the timer
-                                                    // NOTE: remember that deep copy is
-                                                    // (destination, source)
-                                                    Kokkos::deep_copy(view_d, view_h);
-                                                    elapsed += timer.seconds();
-
-                                                    // tick up our successful input transfers
-                                                    tracked_input_transfers++;
-                                                }
-                                            }); // 6
-                                        }
-                                    }); // 5
-                                }
-
-                                // mark first as done
-                                first = false;
-
-                            } // 3
-
-                            // execute the kernel
-                            timer.reset(); // start the timer
-                            k(kernel_device);
-                            elapsed += timer.seconds();
-
-                            // copy outputs
-
-                            // 3: loop over the outputs
-                            // for (size_t j : ksel.output_id)
-                            for (auto idx = 0; idx < ksel.output_id_local.size(); idx++)
-                            {
-                                size_t j                   = ksel.output_id_local[idx];
-                                DeviceSelector view_device = ksel.output_device[idx];
-                                // no need to copy if data is already on the correct device
-                                if (view_device == kernel_device)
-                                    continue;
-                                // 4: get the host view
+                                // 5: get the host view
                                 iter_tuple(
                                   views_h,
                                   [&]<typename HostViewType>(size_t jh, HostViewType& view_h)
@@ -889,7 +813,7 @@ class Algorithm
                                     if (jh == j)
                                     { // view_h
 
-                                        // 5: get the device view
+                                        // 6: get the device view
                                         iter_tuple(
                                           views_d,
                                           [&]<typename DeviceViewType>(size_t jd,
@@ -898,39 +822,84 @@ class Algorithm
                                             if (jd == j)
                                             { // view_d
 
-                                                // copy the data, ensure direction is correct
+                                                // copy the data
+#ifdef DYNTUNE_DEBUG_ENABLED
+                                                std::cout << "chain_" << i_chain << ": ker_" << i
+                                                          << ":  INPUT -> host-2-device : view "
+                                                          << jh << "->" << jd << std::endl;
+#endif
                                                 timer.reset(); // start the timer
-                                                if (view_device == DeviceSelector::DEVICE)
-                                                {
-#ifdef DYNTUNE_DEBUG_ENABLED
-                                                    std::cout
-                                                      << "chain_" << i_chain << ": ker_" << i
-                                                      << ":  OUTPUT -> host-2-device : view " << jh
-                                                      << "->" << jd << std::endl;
-#endif
-                                                    Kokkos::deep_copy(view_d, view_h);
-                                                }
-                                                else
-                                                {
-#ifdef DYNTUNE_DEBUG_ENABLED
-                                                    std::cout
-                                                      << "chain_" << i_chain << ": ker_" << i
-                                                      << ":  OUTPUT -> device-2-host : view " << jh
-                                                      << "->" << jd << std::endl;
-#endif
-                                                    Kokkos::deep_copy(view_h, view_d);
-                                                }
+                                                // NOTE: remember that deep copy is
+                                                // (destination, source)
+                                                Kokkos::deep_copy(view_d, view_h);
                                                 elapsed += timer.seconds();
 
-                                                // tick up our tracked output transfers
-                                                tracked_output_transfers++;
+                                                // tick up our successful input transfers
+                                                tracked_input_transfers++;
                                             }
-                                        }); // 5
+                                        }); // 6
                                     }
-                                }); // 4
+                                }); // 5
+                            }
 
-                            } // 3
-                        }
+                            // mark first as done
+                            first = false;
+
+                        } // 3
+
+                        // execute the kernel
+                        timer.reset(); // start the timer
+                        k(kernel_device);
+                        elapsed += timer.seconds();
+
+                        // copy outputs
+
+                        // 3: loop over the outputs
+                        // for (size_t j : ksel.output_id)
+                        for (auto idx = 0; idx < ksel.output_id_local.size(); idx++)
+                        {
+                            size_t j                   = ksel.output_id_local[idx];
+                            DeviceSelector view_device = ksel.output_device[idx];
+                            // no need to copy if data is already on the correct device
+                            if (view_device == kernel_device)
+                                continue;
+                            // 4: get the host view
+                            find_tuple(views_h,
+                                       j,
+                                       [&]<typename HostViewType>(HostViewType& view_h) { // view_h
+                                // 5: get the device view
+                                find_tuple(
+                                  views_d,
+                                  j,
+                                  [&]<typename DeviceViewType>(DeviceViewType& view_d) { // view_d
+                                    // copy the data, ensure direction is correct
+                                    timer.reset(); // start the timer
+                                    if (view_device == DeviceSelector::DEVICE)
+                                    {
+#ifdef DYNTUNE_DEBUG_ENABLED
+                                        std::cout << "chain_" << i_chain << ": ker_" << i
+                                                  << ":  OUTPUT -> host-2-device : view " << jh
+                                                  << "->" << jd << std::endl;
+#endif
+                                        Kokkos::deep_copy(view_d, view_h);
+                                    }
+                                    else
+                                    {
+#ifdef DYNTUNE_DEBUG_ENABLED
+                                        std::cout << "chain_" << i_chain << ": ker_" << i
+                                                  << ":  OUTPUT -> device-2-host : view " << jh
+                                                  << "->" << jd << std::endl;
+#endif
+                                        Kokkos::deep_copy(view_h, view_d);
+                                    }
+                                    elapsed += timer.seconds();
+
+                                    // tick up our tracked output transfers
+                                    tracked_output_transfers++;
+                                }); // 5
+                            });     // 4
+
+                        } // 3
                     }); // 2
 
                 } // 1
