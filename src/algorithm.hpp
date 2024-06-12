@@ -799,7 +799,7 @@ class Algorithm
                         // 3: copy data over to device if it needs it
                         //    NOTE: this used to apply only to the first kernel, but the first
                         //    operator was causing data to get skipped further down chains
-                        if ((kernel_device == DeviceSelector::DEVICE))
+                        if (kernel_device == DeviceSelector::DEVICE)
                         {
 
                             // 4: loop over inputs only
