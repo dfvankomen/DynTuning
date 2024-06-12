@@ -1,11 +1,13 @@
 #pragma once
 
 #include "common.hpp"
+#include "data_deps.hpp"
 #include "kernel.hpp"
 
 #include <functional>
 #include <iomanip>
 #include <set>
+#include <stdexcept>
 
 #define DEBUG_ENABLED 0
 
@@ -39,6 +41,9 @@ class Algorithm
 
     // allow reordering
     bool reordering_;
+
+    // data dependency graph
+    DataDependencyGraph data_graph;
 
     // available options for devices to run on
     std::vector<std::vector<DeviceSelector>> devices;
@@ -491,6 +496,9 @@ class Algorithm
                 KernelSelector& ksel_l = kernel_chain[ksel_l_id];
                 size_t _il             = ksel_l.kernel_id;
 
+                std::vector<size_t> outputs_to_add;
+                std::vector<size_t> inputs_to_add;
+
                 // 2: find this kernel
                 find_tuple(kernels_,
                            _il,
@@ -628,6 +636,8 @@ class Algorithm
                             ksel_l.output_id_local.push_back(jl);
                             ksel_l.output_id.push_back(j);
 
+                            outputs_to_add.push_back(j);
+
                             // update the number of output transfers
                             if (device == DeviceSelector::HOST)
                                 chains_total_output_transfers_d2h[i_chain] += 1;
@@ -645,10 +655,26 @@ class Algorithm
                                 chains_total_input_transfers_d2h[i_chain] += 1;
                             else
                                 chains_total_input_transfers_h2d[i_chain] += 1;
+
+                            inputs_to_add.push_back(j);
                         }
 
                     }); // 3
                 });     // 2
+
+                // only work with data dependencies if it's the first chain
+                if (i_chain == 0)
+                {
+                    // now we add the outputs and inputs to the data graph
+                    // NOTE: Assume that all inputs handle all outputs, as the kernel requires them
+                    for (auto& inp : inputs_to_add)
+                    {
+                        for (auto& outp : outputs_to_add)
+                        {
+                            data_graph.add_edge(inp, outp, _il);
+                        }
+                    }
+                }
 
 #ifdef DYNTUNE_DEBUG_ENABLED
                 std::cout << "Chain, Kernel " << i_chain << ", " << _il << " Output IDs (global): ";
@@ -719,6 +745,10 @@ class Algorithm
             }
             std::cout << std::endl;
         }
+        std::cout << std::endl;
+
+        std::cout << "Kernel data dependency graph: " << std::endl;
+        data_graph.print_graph_normal();
         std::cout << std::endl;
 
     } // end build_data_graph
@@ -803,26 +833,75 @@ class Algorithm
                         {
 
                             // 4: loop over inputs only
-                            for (size_t j : ksel.input_id_local)
+                            for (size_t j_it = 0; j_it < ksel.input_id_local.size(); j_it++)
+                            // for (size_t j : ksel.input_id_local)
                             {
+                                size_t j_local  = ksel.input_id_local[j_it];
+                                size_t j_global = ksel.input_id[j_it];
+
+                                // Skip this view *if* it was a dependent, as the outputs are
+                                // moved to the target device peroperly
+                                // TODO: this will need to be reworked depending on the
+                                // implementation for the rest of the project, i.e. if we have
+                                // logic for *when* to move data, we'll need to change this
+
+                                // but now we need the input IDs from a global standpoint too
+
+                                // find via j_global if we're a dependent input, if we are we
+                                // can skip this iteration
+                                DataDependencyGraph::Node* j_dep_node =
+                                  data_graph.find_node(j_global);
+
+                                if (j_dep_node == nullptr)
+                                {
+                                    throw std::runtime_error(
+                                      "Global input node couldn't be found: kernel_global=" +
+                                      std::to_string(j_global));
+                                }
+
+                                bool skip_transfer = false;
+                                // iterate through the prev nodes, as we can check for any
+                                // dependencies based on kernel id
+                                for (auto prev_pair : j_dep_node->prev)
+                                {
+                                    // if any of the incoming edges are *not* this kernel, then that
+                                    // means it is an output elsewhere and it will be moved
+                                    // automatically
+                                    if (prev_pair.first != i)
+                                    {
+                                        skip_transfer = true;
+                                        break;
+                                    }
+                                }
+
+                                if (skip_transfer)
+                                {
+#ifdef DYNTUNE_DEBUG_ENABLED
+                                    std::cout
+                                      << "Kernel " << i
+                                      << " reporting that it's *NOT* copying data: " << j_local
+                                      << " (global " << j_global << ")" << std::endl;
+#endif
+                                    continue;
+                                }
+
+
                                 // 5: get the host view
-                                find_tuple(
-                                  views_h,
-                                  j,
-                                  [&]<typename HostViewType>(size_t jh, HostViewType& view_h)
+                                find_tuple(views_h,
+                                           j_local,
+                                           [&]<typename HostViewType>(HostViewType& view_h)
                                 {
                                     // 6: get the device view
                                     find_tuple(views_d,
-                                               j,
+                                               j_local,
                                                [&]<typename DeviceViewType>(
-                                                 size_t jd,
                                                  DeviceViewType& view_d) { // view_d
 
                                     // copy the data
 #ifdef DYNTUNE_DEBUG_ENABLED
                                         std::cout << "chain_" << i_chain << ": ker_" << i
-                                                  << ":  INPUT -> host-2-device : view " << jh
-                                                  << "->" << jd << std::endl;
+                                                  << ":  INPUT -> host-2-device : view " << j_local
+                                                  << " (global " << j_global << ")" << std::endl;
 #endif
                                         timer.reset(); // start the timer
                                         // NOTE: remember that deep copy is
@@ -853,6 +932,7 @@ class Algorithm
                         for (auto idx = 0; idx < ksel.output_id_local.size(); idx++)
                         {
                             size_t j                   = ksel.output_id_local[idx];
+                            size_t j_global            = ksel.output_id[idx];
                             DeviceSelector view_device = ksel.output_device[idx];
                             // no need to copy if data is already on the correct device
                             if (view_device == kernel_device)
@@ -872,8 +952,8 @@ class Algorithm
                                     {
 #ifdef DYNTUNE_DEBUG_ENABLED
                                         std::cout << "chain_" << i_chain << ": ker_" << i
-                                                  << ":  OUTPUT -> host-2-device : view " << jh
-                                                  << "->" << jd << std::endl;
+                                                  << ":  OUTPUT -> host-2-device : view " << j
+                                                  << " (global " << j_global << ")" << std::endl;
 #endif
                                         Kokkos::deep_copy(view_d, view_h);
                                     }
@@ -881,8 +961,8 @@ class Algorithm
                                     {
 #ifdef DYNTUNE_DEBUG_ENABLED
                                         std::cout << "chain_" << i_chain << ": ker_" << i
-                                                  << ":  OUTPUT -> device-2-host : view " << jh
-                                                  << "->" << jd << std::endl;
+                                                  << ":  OUTPUT -> device-2-host : view " << j
+                                                  << " (global " << j_global << ")" << std::endl;
 #endif
                                         Kokkos::deep_copy(view_h, view_d);
                                     }
