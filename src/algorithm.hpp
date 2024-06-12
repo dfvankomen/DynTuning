@@ -806,40 +806,34 @@ class Algorithm
                             for (size_t j : ksel.input_id_local)
                             {
                                 // 5: get the host view
-                                iter_tuple(
+                                find_tuple(
                                   views_h,
+                                  j,
                                   [&]<typename HostViewType>(size_t jh, HostViewType& view_h)
                                 {
-                                    if (jh == j)
-                                    { // view_h
+                                    // 6: get the device view
+                                    find_tuple(views_d,
+                                               j,
+                                               [&]<typename DeviceViewType>(
+                                                 size_t jd,
+                                                 DeviceViewType& view_d) { // view_d
 
-                                        // 6: get the device view
-                                        iter_tuple(
-                                          views_d,
-                                          [&]<typename DeviceViewType>(size_t jd,
-                                                                       DeviceViewType& view_d)
-                                        {
-                                            if (jd == j)
-                                            { // view_d
-
-                                                // copy the data
+                                    // copy the data
 #ifdef DYNTUNE_DEBUG_ENABLED
-                                                std::cout << "chain_" << i_chain << ": ker_" << i
-                                                          << ":  INPUT -> host-2-device : view "
-                                                          << jh << "->" << jd << std::endl;
+                                        std::cout << "chain_" << i_chain << ": ker_" << i
+                                                  << ":  INPUT -> host-2-device : view " << jh
+                                                  << "->" << jd << std::endl;
 #endif
-                                                timer.reset(); // start the timer
-                                                // NOTE: remember that deep copy is
-                                                // (destination, source)
-                                                Kokkos::deep_copy(view_d, view_h);
-                                                elapsed += timer.seconds();
+                                        timer.reset(); // start the timer
+                                        // NOTE: remember that deep copy is
+                                        // (destination, source)
+                                        Kokkos::deep_copy(view_d, view_h);
+                                        elapsed += timer.seconds();
 
-                                                // tick up our successful input transfers
-                                                tracked_input_transfers++;
-                                            }
-                                        }); // 6
-                                    }
-                                }); // 5
+                                        // tick up our successful input transfers
+                                        tracked_input_transfers++;
+                                    }); // 6
+                                });     // 5
                             }
 
                             // mark first as done
