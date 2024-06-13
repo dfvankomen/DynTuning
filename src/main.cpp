@@ -61,7 +61,7 @@ int main(int argc, char* argv[])
         std::vector<double> q(N);
         std::vector<double> r(N);
         std::vector<double> s(N);
-        // Eigen::MatrixXd  t(N, N);
+        Eigen::MatrixXd t(N, N);
         std::vector<double> u(N);
         std::vector<double> v(N);
         std::vector<double> w(N);
@@ -80,8 +80,12 @@ int main(int argc, char* argv[])
             std::iota(q.begin(), q.end(), 1.0);
             std::iota(r.begin(), r.end(), 1.0);
             std::iota(s.begin(), s.end(), 1.0);
-            //{ int ij = 0; for (int i=0; i<N; i++) for (int j=0; j<N; j++) t(i,j) =
-            //static_cast<double>(ij++); }
+            {
+                int ij = 0;
+                for (int i = 0; i < N; i++)
+                    for (int j = 0; j < N; j++)
+                        t(i, j) = static_cast<double>(ij++);
+            }
             std::iota(v.begin(), v.end(), 1.0);
             std::iota(u.begin(),
                       u.end(),
@@ -105,7 +109,7 @@ int main(int argc, char* argv[])
         constexpr auto data_names = std::make_tuple(HashedName<hash("q")>(),
                                                     HashedName<hash("r")>(),
                                                     HashedName<hash("s")>(),
-                                                    // HashedName<hash("t")>(),
+                                                    HashedName<hash("t")>(),
                                                     HashedName<hash("u")>(),
                                                     HashedName<hash("v")>(),
                                                     HashedName<hash("w")>(),
@@ -126,12 +130,12 @@ int main(int argc, char* argv[])
         auto& z_views = get_data_view("z");
         */
         printf("\nbuilding views\n");
-        auto data_views = create_views(pack(q, r, s, u, v, w, x, y, z));
+        auto data_views = create_views(pack(q, r, s, t, u, v, w, x, y, z));
 
         auto& q_views = std::get<find<hash("q")>(data_names)>(data_views);
         auto& r_views = std::get<find<hash("r")>(data_names)>(data_views);
         auto& s_views = std::get<find<hash("s")>(data_names)>(data_views);
-        // auto& t_views = std::get<find<hash("t")>(data_names)>(data_views);
+        auto& t_views = std::get<find<hash("t")>(data_names)>(data_views);
         auto& u_views = std::get<find<hash("u")>(data_names)>(data_views);
         auto& v_views = std::get<find<hash("v")>(data_names)>(data_views);
         auto& w_views = std::get<find<hash("w")>(data_names)>(data_views);
@@ -139,12 +143,27 @@ int main(int argc, char* argv[])
         auto& y_views = std::get<find<hash("y")>(data_names)>(data_views);
         auto& z_views = std::get<find<hash("z")>(data_names)>(data_views);
 
+
+        iter_tuple(data_views,
+                   [&]<typename TempViewType>(size_t view_id, TempViewType& temp_view)
+        {
+            std::cout << "View ID: " << view_id << std::endl;
+            iter_tuple(temp_view,
+                       [&]<typename DeviceHostViewTypeThing>(size_t view_inner_id,
+                                                             DeviceHostViewTypeThing& temp_inner) {
+                std::cout << "    inner: " << view_inner_id << " rank: " << temp_inner.rank()
+                          << std::endl;
+            });
+        });
+        throw std::exception();
+
+
         // define all kernels
         printf("\nbuilding kernels\n");
         auto k1 =
           KernelVVM(options, std::as_const(q_views), std::as_const(r_views), s_views); // vvm
-        // auto k2 = KernelMVM(options, std::as_const(t_views), std::as_const(s_views), u_views); //
-        // mvm
+        auto k2 =
+          KernelMVM(options, std::as_const(t_views), std::as_const(s_views), u_views); // mvm
         auto k3 =
           KernelVVM(options, std::as_const(v_views), std::as_const(u_views), w_views); // vvm
         // auto k5 = KernelVVM(options, std::as_const(v_views), std::as_const(u_views), w_views); //
@@ -155,7 +174,8 @@ int main(int argc, char* argv[])
         // register all kernels info an Algorithm
         // auto kernels = pack(k1, k2, k3, k4);
         printf("\nbuilding algorithm\n");
-        auto kernels = pack(k1, k3, k4);
+        // auto kernels = pack(k1, k3, k4);
+        auto kernels = pack(k2);
         Algorithm algo(kernels, data_views, reordering);
         algo.set_num_chain_runs(num_chain_runs);
 
@@ -164,57 +184,56 @@ int main(int argc, char* argv[])
         algo.set_selected_chain(single_chain);
 #endif
 
-        algo.set_validation_function(
-          [&s, &w, &z, &s_truth, &w_truth, &z_truth, &N]()
-          {
+        algo.set_validation_function([&s, &w, &z, &s_truth, &w_truth, &z_truth, &N]()
+        {
 #ifdef DYNTUNE_DEBUG_ENABLED
-              std::cout << "Inside validation function! " << std::endl;
+            std::cout << "Inside validation function! " << std::endl;
 
-              double abs_difference = 0.0;
+            double abs_difference = 0.0;
 
-              // NOTE: verification of S depends on the device transfer back over since it's a
-              // "dependent"
-              for (size_t i = 0; i < N; i++)
-              {
-                  abs_difference += std::abs(s[i] - s_truth[i]);
-                  // std::cout << s[i] << "," << s_truth[i] << " ";
-                  s[i] = 0.0;
-              }
-              // std::cout << std::endl;
-              std::cout << "abs difference for s (output kernel 0): " << abs_difference / N
-                        << std::endl;
+            // NOTE: verification of S depends on the device transfer back over since it's a
+            // "dependent"
+            for (size_t i = 0; i < N; i++)
+            {
+                abs_difference += std::abs(s[i] - s_truth[i]);
+                // std::cout << s[i] << "," << s_truth[i] << " ";
+                s[i] = 0.0;
+            }
+            // std::cout << std::endl;
+            std::cout << "abs difference for s (output kernel 0): " << abs_difference / N
+                      << std::endl;
 
 
-              abs_difference = 0.0;
-              for (size_t i = 0; i < N; i++)
-              {
-                  abs_difference += std::abs(w[i] - w_truth[i]);
-                  // std::cout << w[i] << "," << w_truth[i] << " ";
-                  w[i] = 0.0;
-              }
-              // std::cout << std::endl;
-              std::cout << "abs difference for w (output kernel 1): " << abs_difference / N
-                        << std::endl;
+            abs_difference = 0.0;
+            for (size_t i = 0; i < N; i++)
+            {
+                abs_difference += std::abs(w[i] - w_truth[i]);
+                // std::cout << w[i] << "," << w_truth[i] << " ";
+                w[i] = 0.0;
+            }
+            // std::cout << std::endl;
+            std::cout << "abs difference for w (output kernel 1): " << abs_difference / N
+                      << std::endl;
 
-              abs_difference = 0.0;
-              for (size_t i = 0; i < N; i++)
-              {
-                  abs_difference += std::abs(z[i] - z_truth[i]);
-                  // std::cout << z[i] << "," << z_truth[i] << " ";
-                  z[i] = 0.0;
-              }
-              // std::cout << std::endl;
-              std::cout << "abs difference for z (output kernel 2): " << abs_difference / N
-                        << std::endl
-                        << std::endl;
+            abs_difference = 0.0;
+            for (size_t i = 0; i < N; i++)
+            {
+                abs_difference += std::abs(z[i] - z_truth[i]);
+                // std::cout << z[i] << "," << z_truth[i] << " ";
+                z[i] = 0.0;
+            }
+            // std::cout << std::endl;
+            std::cout << "abs difference for z (output kernel 2): " << abs_difference / N
+                      << std::endl
+                      << std::endl;
 #endif
-          });
+        });
 
         // run the algorithm;
         printf("\nrunning algorithm...\n");
-        ;
+
         double progress = 0.0;
-        ;
+
         for (size_t ii = 0; ii < num_sims; ii++)
             algo();
 
