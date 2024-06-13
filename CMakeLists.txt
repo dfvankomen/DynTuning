@@ -43,7 +43,7 @@ message(STATUS "Kokkos Device Execution Space: Kokkos::" ${Kokkos_DEVICE})
 
 option(DYNTUNE_ENABLE_ORDER_SHUFFLE "Whether or not to shuffle the kernel operation order" ON)
 option(DYNTUNE_SINGLE_CHAIN_RUN "Only allow a single chain to run, requires --single_chain option" OFF)
-option(DYNTUNE_DEBUG_ENABLED "Enables a large number of debug statements" ON)
+option(DYNTUNE_DEBUG_ENABLED "Enables a large number of debug statements" OFF)
 
 if(DYNTUNE_ENABLE_ORDER_SHUFFLE)
   add_definitions(-DDYNTUNE_ENABLE_ORDER_SHUFFLE)
