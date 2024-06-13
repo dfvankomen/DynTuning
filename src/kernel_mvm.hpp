@@ -38,6 +38,8 @@ struct FunctorMVM_Device
     }
 };
 
+#define get_v(i, j, tuple) std::get<j>(std::get<i>(tuple))
+
 template<typename... ParameterTypes>
 inline auto KernelMVM(KernelOptions& options, ParameterTypes&... data_views)
 {
