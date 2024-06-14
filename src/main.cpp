@@ -144,6 +144,7 @@ int main(int argc, char* argv[])
         auto& z_views = std::get<find<hash("z")>(data_names)>(data_views);
 
 
+        // TEMP: this is a temporary helper to try and figure out what's going on here
         iter_tuple(data_views,
                    [&]<typename TempViewType>(size_t view_id, TempViewType& temp_view)
         {
@@ -155,7 +156,7 @@ int main(int argc, char* argv[])
                           << std::endl;
             });
         });
-        throw std::exception();
+        // throw std::exception();
 
 
         // define all kernels

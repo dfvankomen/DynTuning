@@ -826,99 +826,14 @@ class Algorithm
                         auto views_h = std::get<0>(k.data_views_);
                         auto views_d = std::get<1>(k.data_views_);
 
-                        // 3: copy data over to device if it needs it
-                        //    NOTE: this used to apply only to the first kernel, but the first
-                        //    operator was causing data to get skipped further down chains
-                        if (kernel_device == DeviceSelector::DEVICE)
-                        {
-
-                            // 4: loop over inputs only
-                            for (size_t j_it = 0; j_it < ksel.input_id_local.size(); j_it++)
-                            // for (size_t j : ksel.input_id_local)
-                            {
-                                size_t j_local  = ksel.input_id_local[j_it];
-                                size_t j_global = ksel.input_id[j_it];
-
-                                // Skip this view *if* it was a dependent, as the outputs are
-                                // moved to the target device peroperly
-                                // TODO: this will need to be reworked depending on the
-                                // implementation for the rest of the project, i.e. if we have
-                                // logic for *when* to move data, we'll need to change this
-
-                                // but now we need the input IDs from a global standpoint too
-
-                                // find via j_global if we're a dependent input, if we are we
-                                // can skip this iteration
-                                DataDependencyGraph::Node* j_dep_node =
-                                  data_graph.find_node(j_global);
-
-                                if (j_dep_node == nullptr)
-                                {
-                                    throw std::runtime_error(
-                                      "Global input node couldn't be found: kernel_global=" +
-                                      std::to_string(j_global));
-                                }
-
-                                bool skip_transfer = false;
-                                // iterate through the prev nodes, as we can check for any
-                                // dependencies based on kernel id
-                                for (auto prev_pair : j_dep_node->prev)
-                                {
-                                    // if any of the incoming edges are *not* this kernel, then that
-                                    // means it is an output elsewhere and it will be moved
-                                    // automatically
-                                    if (prev_pair.first != i)
-                                    {
-                                        skip_transfer = true;
-                                        break;
-                                    }
-                                }
-
-                                if (skip_transfer)
-                                {
-#ifdef DYNTUNE_DEBUG_ENABLED
-                                    std::cout
-                                      << "Kernel " << i
-                                      << " reporting that it's *NOT* copying data: " << j_local
-                                      << " (global " << j_global << ")" << std::endl;
-#endif
-                                    continue;
-                                }
-
-
-                                // 5: get the host view
-                                find_tuple(views_h,
-                                           j_local,
-                                           [&]<typename HostViewType>(HostViewType& view_h)
-                                {
-                                    // 6: get the device view
-                                    find_tuple(views_d,
-                                               j_local,
-                                               [&]<typename DeviceViewType>(
-                                                 DeviceViewType& view_d) { // view_d
-
-                                    // copy the data
-#ifdef DYNTUNE_DEBUG_ENABLED
-                                        std::cout << "chain_" << i_chain << ": ker_" << i
-                                                  << ":  INPUT -> host-2-device : view " << j_local
-                                                  << " (global " << j_global << ")" << std::endl;
-#endif
-                                        timer.reset(); // start the timer
-                                        // NOTE: remember that deep copy is
-                                        // (destination, source)
-                                        Kokkos::deep_copy(view_d, view_h);
-                                        elapsed += timer.seconds();
-
-                                        // tick up our successful input transfers
-                                        tracked_input_transfers++;
-                                    }); // 6
-                                });     // 5
-                            }
-
-                            // mark first as done
-                            first = false;
-
-                        } // 3
+                        do_data_transfer_to_host(ksel,
+                                                 k,
+                                                 i,
+                                                 kernel_device,
+                                                 elapsed,
+                                                 timer,
+                                                 tracked_input_transfers,
+                                                 i_chain);
 
                         // execute the kernel
                         timer.reset(); // start the timer
@@ -1080,6 +995,99 @@ class Algorithm
         }
 
         std::cout << std::endl << "==========================" << std::endl;
+    }
+
+    template<typename KernelType>
+    void do_data_transfer_to_host(KernelSelector& kernel_selector,
+                                  KernelType& kernel,
+                                  size_t& kernel_id,
+                                  DeviceSelector& kernel_device,
+                                  double& elapsed,
+                                  Kokkos::Timer& timer,
+                                  uint32_t& tracked_input_transfers,
+                                  uint32_t& chain_id)
+    {
+
+        // get the kernel views
+        auto views_h = std::get<0>(kernel.data_views_);
+        auto views_d = std::get<1>(kernel.data_views_);
+
+        // copy the data over only if the device is active
+        if (kernel_device != DeviceSelector::DEVICE)
+        {
+            return;
+        }
+
+        // otherwise we're good to continue
+        for (size_t j_it = 0; j_it < kernel_selector.input_id_local.size(); j_it++)
+        {
+            size_t j_local  = kernel_selector.input_id_local[j_it];
+            size_t j_global = kernel_selector.input_id[j_it];
+
+
+            // make sure we skip this **if** its a dependent, as the data is always moved
+            // where it needs to be after execution
+            // TODO: this needs to be handled later depending on how we decide to move data around
+
+            DataDependencyGraph::Node* j_dep_node = data_graph.find_node(j_global);
+
+            if (j_dep_node == nullptr)
+            {
+                throw std::runtime_error("Global input node couldn't be found: kernel_global=" +
+                                         std::to_string(j_global));
+            }
+
+            bool skip_transfer = false;
+
+            // iterate through previous nodes to check for any dependencies based on kernel id
+            for (auto prev_pair : j_dep_node->prev)
+            {
+                // if any of the incoming edges are *not* this kernel, then it means this is an
+                // output elsewhere and will be moved at the end of the kernel execution
+                if (prev_pair.first != kernel_id)
+                {
+                    skip_transfer = true;
+                    break;
+                }
+            }
+
+            if (skip_transfer)
+            {
+
+#ifdef DYNTUNE_DEBUG_ENABLED
+                std::cout << "chain_" << chain_id << ": Kernel " << kernel_id
+                          << " reporting that it's *NOT* copying data: " << j_local << " (global "
+                          << j_global << ")" << std::endl;
+#endif
+                continue;
+            }
+
+            // now we need to iterate through the views
+
+            find_tuple(views_h,
+                       j_local,
+                       [&]<typename HostViewType>(HostViewType& view_h)
+            {
+                find_tuple(views_d,
+                           j_local,
+                           [&]<typename DeviceViewType>(DeviceViewType& view_d)
+                {
+
+                // copy the data over, but only if the data types match
+#ifdef DYNTUNE_DEBUG_ENABLED
+                    std::cout << "chain_" << chain_id << ": ker_" << kernel_id
+                              << ":  INPUT -> host-2-device : view " << j_local << " (global "
+                              << j_global << ")" << std::endl;
+#endif
+
+                    timer.reset(); // start the timer for profiling
+                    Kokkos::deep_copy(view_d, view_h);
+                    elapsed += timer.seconds();
+
+                    tracked_input_transfers++;
+                }); // end views_d finding
+            });     // end views_h finding
+        } // end input list iteration
     }
 
 }; // end Algorithm
