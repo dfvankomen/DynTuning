@@ -863,12 +863,16 @@ class Algorithm
                                   [&]<typename DeviceViewType>(DeviceViewType& view_d) { // view_d
                                     // copy the data, ensure direction is correct
                                     timer.reset(); // start the timer
-                                    if (view_device == DeviceSelector::DEVICE)
+
+                                    if constexpr (HostViewType::rank == DeviceViewType::rank)
                                     {
+                                        if (view_device == DeviceSelector::DEVICE)
+                                        {
 #ifdef DYNTUNE_DEBUG_ENABLED
-                                        std::cout << "chain_" << i_chain << ": ker_" << i
-                                                  << ":  OUTPUT -> host-2-device : view " << j
-                                                  << " (global " << j_global << ")" << std::endl;
+                                            std::cout << "chain_" << i_chain << ": ker_" << i
+                                                      << ":  OUTPUT -> host-2-device : view " << j
+                                                      << " (global " << j_global << ")"
+                                                      << std::endl;
 #endif
                                         Kokkos::deep_copy(view_d, view_h);
                                     }
@@ -877,11 +881,13 @@ class Algorithm
 #ifdef DYNTUNE_DEBUG_ENABLED
                                         std::cout << "chain_" << i_chain << ": ker_" << i
                                                   << ":  OUTPUT -> device-2-host : view " << j
-                                                  << " (global " << j_global << ")" << std::endl;
+                                                      << " (global " << j_global << ")"
+                                                      << std::endl;
 #endif
                                         Kokkos::deep_copy(view_h, view_d);
                                     }
                                     elapsed += timer.seconds();
+                                    }
 
                                     // tick up our tracked output transfers
                                     tracked_output_transfers++;
