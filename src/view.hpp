@@ -14,9 +14,9 @@ enum class ViewMemoryType
 };
 
 // space
-using HostViewSpace     = HostExecutionSpace;
-using DeviceViewSpace   = DeviceExecutionSpace;
-using ScratchViewSpace  = HostViewSpace;
+using HostViewSpace    = HostExecutionSpace;
+using DeviceViewSpace  = DeviceExecutionSpace;
+using ScratchViewSpace = HostViewSpace;
 
 // layout
 using HostViewLayout    = typename HostExecutionSpace::array_layout;
@@ -24,9 +24,10 @@ using DeviceViewLayout  = Kokkos::LayoutLeft;
 using ScratchViewLayout = DeviceViewLayout;
 
 // generator
-template<typename ExecutionSpace, ViewMemoryType MemoryType> struct Views;
-using HostViewGenerator    = Views<HostViewSpace,    ViewMemoryType::NONOWNING>;
-using DeviceViewGenerator  = Views<DeviceViewSpace,  ViewMemoryType::OWNING>;
+template<typename ExecutionSpace, ViewMemoryType MemoryType>
+struct Views;
+using HostViewGenerator    = Views<HostViewSpace, ViewMemoryType::NONOWNING>;
+using DeviceViewGenerator  = Views<DeviceViewSpace, ViewMemoryType::OWNING>;
 using ScratchViewGenerator = Views<ScratchViewSpace, ViewMemoryType::TMP>;
 
 //=============================================================================
@@ -50,8 +51,8 @@ concept IsEigenMatrix = std::is_base_of_v<Eigen::MatrixBase<std::decay_t<T>>, st
 // EquivalentView
 //=============================================================================
 
-//https://kokkos.org/kokkos-core-wiki/API/core/KokkosConcepts.html
-//https://kokkos.org/kokkos-core-wiki/API/core/view/view.html
+// https://kokkos.org/kokkos-core-wiki/API/core/KokkosConcepts.html
+// https://kokkos.org/kokkos-core-wiki/API/core/view/view.html
 
 /// Used to map a container to the corresponding view type
 template<typename ExecutionSpace, typename MemoryLayout, typename T>
@@ -71,10 +72,9 @@ struct EquivalentView<ExecutionSpace, MemoryLayout, T>
 
     // Type for the equivalent view of the data structure
     using type = Kokkos::View<value_type*, MemoryLayout, ExecutionSpace>;
-    //using type = Kokkos::View<value_type*,
-    //                          typename ExecutionSpace::array_layout,
-    //                          typename ExecutionSpace::memory_space>;
-
+    // using type = Kokkos::View<value_type*,
+    //                           typename ExecutionSpace::array_layout,
+    //                           typename ExecutionSpace::memory_space>;
 };
 
 template<typename ExecutionSpace, typename MemoryLayout, typename T>
@@ -106,24 +106,28 @@ struct Views
         requires IsStdVector<T>
     static auto create_view(T& vector)
     {
-        
         // Before you panic future developer...this const_cast is a neccessity to allow "inputs" to
         // be copied to the device.  However, we do need to find a way to restore constness later
         // for the sake of the kernel lambda code.
 
         // host layout same as device
-        if constexpr (MemoryType == ViewMemoryType::NONOWNING) {
-            using ViewType = typename EquivalentView<ExecutionSpace, typename ExecutionSpace::array_layout, T>::type;
-            //using ViewType = typename EquivalentView<ExecutionSpace, T>::type;
+        if constexpr (MemoryType == ViewMemoryType::NONOWNING)
+        {
+            using ViewType = typename EquivalentView<ExecutionSpace,
+                                                     typename ExecutionSpace::array_layout,
+                                                     T>::type;
+            // using ViewType = typename EquivalentView<ExecutionSpace, T>::type;
             return ViewType(const_cast<ViewType::value_type*>(vector.data()), vector.size());
-
+        }
         // vectors don't need tmp space
-        } else if constexpr (MemoryType == ViewMemoryType::TMP) {
+        else if constexpr (MemoryType == ViewMemoryType::TMP)
+        {
             using ViewType = typename EquivalentView<ExecutionSpace, Kokkos::LayoutLeft, T>::type;
             return ViewType("", 0);
-
+        }
         // device with ideal device layout
-        } else if constexpr (MemoryType == ViewMemoryType:: OWNING) {
+        else if constexpr (MemoryType == ViewMemoryType::OWNING)
+        {
             using ViewType = typename EquivalentView<ExecutionSpace, Kokkos::LayoutLeft, T>::type;
             return ViewType("", vector.size());
         }
@@ -135,19 +139,27 @@ struct Views
     static auto create_view(T& matrix)
     {
         // host layout may not be ideal for device
-        if constexpr (MemoryType == ViewMemoryType::NONOWNING) {
-            using ViewType = typename EquivalentView<ExecutionSpace, typename ExecutionSpace::array_layout, T>::type;
-            //using ViewType = typename EquivalentView<ExecutionSpace, T>::type;
+        if constexpr (MemoryType == ViewMemoryType::NONOWNING)
+        {
+            using ViewType = typename EquivalentView<ExecutionSpace,
+                                                     typename ExecutionSpace::array_layout,
+                                                     T>::type;
+            // using ViewType = typename EquivalentView<ExecutionSpace, T>::type;
             return ViewType(const_cast<ViewType::value_type*>(matrix.data()),
-                static_cast<size_t>(matrix.rows()), static_cast<size_t>(matrix.cols()));
-
+                            static_cast<size_t>(matrix.rows()),
+                            static_cast<size_t>(matrix.cols()));
+        }
         // tmp space on host with same layout as the device
-        } else if constexpr (MemoryType == ViewMemoryType::TMP) {
+        else if constexpr (MemoryType == ViewMemoryType::TMP)
+        {
             using ViewType = typename EquivalentView<ExecutionSpace, Kokkos::LayoutLeft, T>::type;
-            return ViewType("", static_cast<size_t>(matrix.rows()), static_cast<size_t>(matrix.cols()));
-
+            return ViewType("",
+                            static_cast<size_t>(matrix.rows()),
+                            static_cast<size_t>(matrix.cols()));
+        }
         // device with ideal device layout
-        } else if constexpr (MemoryType == ViewMemoryType:: OWNING) {
+        else if constexpr (MemoryType == ViewMemoryType::OWNING)
+        {
             using ViewType = typename EquivalentView<ExecutionSpace, Kokkos::LayoutLeft, T>::type;
             return ViewType("", matrix.rows(), matrix.cols());
         }
@@ -160,7 +172,8 @@ struct Views
     static auto create_views_helper(const Tuple& params_tuple,
                                     std::integer_sequence<std::size_t, I...>)
     {
-        return std::make_tuple(Views<ExecutionSpace, MemoryType>::create_view(std::get<I>(params_tuple))...);
+        return std::make_tuple(
+          Views<ExecutionSpace, MemoryType>::create_view(std::get<I>(params_tuple))...);
     }
 
     template<typename... ParameterTypes>
@@ -169,18 +182,16 @@ struct Views
         return create_views_helper(params_tuple,
                                    std::make_index_sequence<sizeof...(ParameterTypes)> {});
     }
-
 };
 
 
-template <typename T>
+template<typename T>
 inline static auto create_views_inner_tuple(T& arg)
 {
     // don't need scratch views when the host and device layouts are already the same
     return std::make_tuple(HostViewGenerator::create_view(arg),
                            DeviceViewGenerator::create_view(arg),
                            ScratchViewGenerator::create_view(arg));
-
 }
 template<typename Tp, std::size_t... I>
 inline static auto create_views_outer_tuple(const Tp& t, std::integer_sequence<std::size_t, I...>)
@@ -194,23 +205,28 @@ inline static auto create_views(std::tuple<T...> t)
 }
 
 // utility function to return the type of a complex nested tuple
-template <typename... T>
-struct get_views_outer_tuple_type {
+template<typename... T>
+struct get_views_outer_tuple_type
+{
     using type = decltype(create_views(std::make_tuple(std::declval<T>()...)));
 };
 
 // utility function to return the type of views tuple
-template <typename T>
-struct get_views_inner_tuple_type {
+template<typename T>
+struct get_views_inner_tuple_type
+{
     using type = decltype(create_views_inner_tuple(std::declval<T>()));
 };
 
 
 
-template <typename ViewType>
-inline void print_view(ViewType& view) {
-    if (view.rank() == 1) {
-        for (size_t i = 0; i < view.extent(0); i++) {
+template<typename ViewType>
+inline void print_view(ViewType& view)
+{
+    if (view.rank() == 1)
+    {
+        for (size_t i = 0; i < view.extent(0); i++)
+        {
             // Print all the elements on one line
             const double elem = view(i);
             std::cout << elem << " ";
