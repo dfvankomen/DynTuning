@@ -175,6 +175,7 @@ TEST_CASE("Rank 2 View Data Transfer Tests", "data-transfer")
         Eigen::MatrixXd a(N, M);
         Eigen::MatrixXd b(N, M);
 
+        // initialize both matrices to be identical
         int ij = 1;
         for (size_t i = 0; i < N; i++)
         {
@@ -185,24 +186,8 @@ TEST_CASE("Rank 2 View Data Transfer Tests", "data-transfer")
                 ij++;
             }
         }
-        // a and b are matrices from 0 to 100 now
+        // a and b are matrices from 1 to N * M now
         // print the matrix
-        std::cout << "A as eigen, rows and cols: " << a.rows() << ", " << a.cols() << std::endl;
-        for (size_t i = 0; i < a.rows(); i++)
-        {
-            for (size_t j = 0; j < a.cols(); j++)
-            {
-                std::cout << a(i, j) << " ";
-            }
-            std::cout << std::endl;
-        }
-
-        std::cout << "A in memory: ";
-        for (size_t i = 0; i < N * M; i++)
-        {
-            std::cout << a.data()[i] << " ";
-        }
-        std::cout << std::endl;
 
         constexpr auto data_names =
           std::make_tuple(HashedName<hash("a")>(), HashedName<hash("b")>());
@@ -222,73 +207,34 @@ TEST_CASE("Rank 2 View Data Transfer Tests", "data-transfer")
         auto& a_host = std::get<0>(a_views);
         auto& b_host = std::get<0>(b_views);
 
-        std::cout << "A extent (0, 1) : " << a_host.extent(0) << ", " << a_host.extent(1)
-                  << std::endl;
-
-        for (size_t i = 0; i < a_host.extent(0); i++)
-        {
-            for (size_t j = 0; j < a_host.extent(1); j++)
-            {
-                std::cout << a_host(i, j) << " ";
-            }
-            std::cout << std::endl;
-        }
-        std::cout << std::endl;
-
-        // make sure that the input values are what we expect
-        // REQUIRE_THAT(a_host(0, 0), Catch::Matchers::WithinRel(1, 0.00001));
-        // REQUIRE_THAT(a_host(1, 0), Catch::Matchers::WithinRel(2, 0.00001));
-        // REQUIRE_THAT(a_host(0, 1), Catch::Matchers::WithinRel(2, 0.00001));
-        // REQUIRE_THAT(a_host(0, 2), Catch::Matchers::WithinRel(3, 0.00001));
-        // REQUIRE_THAT(a_host(0, 3), Catch::Matchers::WithinRel(4, 0.00001));
-        // REQUIRE_THAT(a_host(0, 4), Catch::Matchers::WithinRel(5, 0.00001));
+        // verify that the view indices match what we're expecting above
+        REQUIRE_THAT(a_host(0, 0), Catch::Matchers::WithinRel(1, 0.00001));
+        REQUIRE_THAT(a_host(0, 1), Catch::Matchers::WithinRel(2, 0.00001));
+        REQUIRE_THAT(a_host(0, 2), Catch::Matchers::WithinRel(3, 0.00001));
+        REQUIRE_THAT(a_host(0, 3), Catch::Matchers::WithinRel(4, 0.00001));
+        REQUIRE_THAT(a_host(0, 4), Catch::Matchers::WithinRel(5, 0.00001));
 
         // TRANSFER THE DATA
         // Since we can't easily access the data on the device, we have to do the transfer, do a
         // modification, and then check upon return if the values are correct
         for (size_t i_data = 0; i_data < 2; i_data++)
-        {
             transfer_data_host_to_device(i_data, views_dimension_flopped);
-        }
 
         // micro kokkos kernel just to see if the data actually transferred by doing some simple
         // math
         auto& a_device = std::get<1>(a_views);
         auto& b_device = std::get<1>(b_views);
-        Kokkos::parallel_for("A Update Loop",
+        Kokkos::parallel_for("Update a and b Loop",
                              device_rank2_range_policy({ 0, 0 }, { N, M }),
                              KOKKOS_LAMBDA(const int i, const int j) {
+                                 // simple calculations, just to make sure things are working right
                                  a_device(i, j) = 500 + a_device(i, j);
                                  b_device(i, j) = 10.0 * b_device(i, j);
                              });
 
         // TRANSFER BACK TO HOST
         for (size_t i_data = 0; i_data < 2; i_data++)
-        {
             transfer_data_device_to_host(i_data, views_dimension_flopped);
-        }
-
-        std::cout << std::endl << "a: " << std::endl;
-        for (size_t i = 0; i < a_host.extent(0); i++)
-        {
-            for (size_t j = 0; j < a_host.extent(1); j++)
-            {
-                std::cout << a_host(i, j) << " ";
-            }
-            std::cout << std::endl;
-        }
-
-
-        std::cout << std::endl << "b: " << std::endl;
-        for (size_t i = 0; i < b_host.extent(0); i++)
-        {
-            for (size_t j = 0; j < b_host.extent(1); j++)
-            {
-                std::cout << b_host(i, j) << " ";
-            }
-            std::cout << std::endl;
-        }
-
 
         // now we do some comparisons on the host data to make sure they're what we expect.
         // A should contain value from 501 - 601 now
