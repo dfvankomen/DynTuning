@@ -141,9 +141,12 @@ struct Views
         // host layout may not be ideal for device
         if constexpr (MemoryType == ViewMemoryType::NONOWNING)
         {
-            using ViewType = typename EquivalentView<ExecutionSpace,
-                                                     typename ExecutionSpace::array_layout,
-                                                     T>::type;
+            // NOTE: Eigen, by default uses "layoutleft" (meaning col-major order).
+            // this differs from the default view which is LayoutRight.
+            // originally the typename Kokkos::LayoutLeft was actually
+            // typename ExecutationSpace::array_layout
+            using ViewType =
+              typename EquivalentView<ExecutionSpace, typename Kokkos::LayoutLeft, T>::type;
             // using ViewType = typename EquivalentView<ExecutionSpace, T>::type;
             return ViewType(const_cast<ViewType::value_type*>(matrix.data()),
                             static_cast<size_t>(matrix.rows()),
