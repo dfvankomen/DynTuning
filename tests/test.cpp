@@ -166,8 +166,8 @@ TEST_CASE("Rank 1 View Data Transfer Tests", "data-transfer")
 TEST_CASE("Rank 2 View Data Transfer Tests", "data-transfer")
 {
     // size of the input vector
-    const size_t N = 3; // num rows
-    const size_t M = 5; // num cols
+    const size_t N = 10; // num rows
+    const size_t M = 5;  // num cols
     Kokkos::initialize();
     {
         // first value in gives .rows() and second gives .cols()
@@ -208,11 +208,17 @@ TEST_CASE("Rank 2 View Data Transfer Tests", "data-transfer")
         auto& b_host = std::get<0>(b_views);
 
         // verify that the view indices match what we're expecting above
-        REQUIRE_THAT(a_host(0, 0), Catch::Matchers::WithinRel(1, 0.00001));
-        REQUIRE_THAT(a_host(0, 1), Catch::Matchers::WithinRel(2, 0.00001));
-        REQUIRE_THAT(a_host(0, 2), Catch::Matchers::WithinRel(3, 0.00001));
-        REQUIRE_THAT(a_host(0, 3), Catch::Matchers::WithinRel(4, 0.00001));
-        REQUIRE_THAT(a_host(0, 4), Catch::Matchers::WithinRel(5, 0.00001));
+        REQUIRE_THAT(a_host(0, 0), Catch::Matchers::WithinULP(1.0, 0));
+        REQUIRE_THAT(a_host(0, 1), Catch::Matchers::WithinULP(2.0, 0));
+        REQUIRE_THAT(a_host(0, 2), Catch::Matchers::WithinULP(3.0, 0));
+        REQUIRE_THAT(a_host(0, 3), Catch::Matchers::WithinULP(4.0, 0));
+        REQUIRE_THAT(a_host(0, 4), Catch::Matchers::WithinULP(5.0, 0));
+        // test the last row
+        REQUIRE_THAT(a_host(9, 0), Catch::Matchers::WithinULP(46.0, 0));
+        REQUIRE_THAT(a_host(9, 1), Catch::Matchers::WithinULP(47.0, 0));
+        REQUIRE_THAT(a_host(9, 2), Catch::Matchers::WithinULP(48.0, 0));
+        REQUIRE_THAT(a_host(9, 3), Catch::Matchers::WithinULP(49.0, 0));
+        REQUIRE_THAT(a_host(9, 4), Catch::Matchers::WithinULP(50.0, 0));
 
         // TRANSFER THE DATA
         // Since we can't easily access the data on the device, we have to do the transfer, do a
@@ -244,12 +250,25 @@ TEST_CASE("Rank 2 View Data Transfer Tests", "data-transfer")
         REQUIRE_THAT(a_host(0, 2), Catch::Matchers::WithinRel(503, 0.00001));
         REQUIRE_THAT(a_host(0, 3), Catch::Matchers::WithinRel(504, 0.00001));
         REQUIRE_THAT(a_host(0, 4), Catch::Matchers::WithinRel(505, 0.00001));
+        // test the last row
+        REQUIRE_THAT(a_host(9, 0), Catch::Matchers::WithinRel(546, 0.00001));
+        REQUIRE_THAT(a_host(9, 1), Catch::Matchers::WithinRel(547, 0.00001));
+        REQUIRE_THAT(a_host(9, 2), Catch::Matchers::WithinRel(548, 0.00001));
+        REQUIRE_THAT(a_host(9, 3), Catch::Matchers::WithinRel(549, 0.00001));
+        REQUIRE_THAT(a_host(9, 4), Catch::Matchers::WithinRel(550, 0.00001));
 
+        // B'e tests
         REQUIRE_THAT(b_host(0, 0), Catch::Matchers::WithinRel(10, 0.00001));
         REQUIRE_THAT(b_host(0, 1), Catch::Matchers::WithinRel(20, 0.00001));
         REQUIRE_THAT(b_host(0, 2), Catch::Matchers::WithinRel(30, 0.00001));
         REQUIRE_THAT(b_host(0, 3), Catch::Matchers::WithinRel(40, 0.00001));
         REQUIRE_THAT(b_host(0, 4), Catch::Matchers::WithinRel(50, 0.00001));
+        // test the last row
+        REQUIRE_THAT(b_host(9, 0), Catch::Matchers::WithinRel(460, 0.00001));
+        REQUIRE_THAT(b_host(9, 1), Catch::Matchers::WithinRel(470, 0.00001));
+        REQUIRE_THAT(b_host(9, 2), Catch::Matchers::WithinRel(480, 0.00001));
+        REQUIRE_THAT(b_host(9, 3), Catch::Matchers::WithinRel(490, 0.00001));
+        REQUIRE_THAT(b_host(9, 4), Catch::Matchers::WithinRel(500, 0.00001));
 
         // data transfer should be *exact* since we're using the same data types, so WithinULP will
         // verify consistency NOTE: on some arch, it's *possible* (but unlikely) that there will be
@@ -259,6 +278,12 @@ TEST_CASE("Rank 2 View Data Transfer Tests", "data-transfer")
         REQUIRE_THAT(a_host(0, 2), Catch::Matchers::WithinULP(503.0, 0));
         REQUIRE_THAT(a_host(0, 3), Catch::Matchers::WithinULP(504.0, 0));
         REQUIRE_THAT(a_host(0, 4), Catch::Matchers::WithinULP(505.0, 0));
+        // test the last row
+        REQUIRE_THAT(a_host(9, 0), Catch::Matchers::WithinULP(546.0, 0));
+        REQUIRE_THAT(a_host(9, 1), Catch::Matchers::WithinULP(547.0, 0));
+        REQUIRE_THAT(a_host(9, 2), Catch::Matchers::WithinULP(548.0, 0));
+        REQUIRE_THAT(a_host(9, 3), Catch::Matchers::WithinULP(549.0, 0));
+        REQUIRE_THAT(a_host(9, 4), Catch::Matchers::WithinULP(550.0, 0));
 
         // B tests
         REQUIRE_THAT(b_host(0, 0), Catch::Matchers::WithinULP(10.0, 0));
@@ -266,6 +291,12 @@ TEST_CASE("Rank 2 View Data Transfer Tests", "data-transfer")
         REQUIRE_THAT(b_host(0, 2), Catch::Matchers::WithinULP(30.0, 0));
         REQUIRE_THAT(b_host(0, 3), Catch::Matchers::WithinULP(40.0, 0));
         REQUIRE_THAT(b_host(0, 4), Catch::Matchers::WithinULP(50.0, 0));
+        // test the last row
+        REQUIRE_THAT(b_host(9, 0), Catch::Matchers::WithinULP(460.0, 0));
+        REQUIRE_THAT(b_host(9, 1), Catch::Matchers::WithinULP(470.0, 0));
+        REQUIRE_THAT(b_host(9, 2), Catch::Matchers::WithinULP(480.0, 0));
+        REQUIRE_THAT(b_host(9, 3), Catch::Matchers::WithinULP(490.0, 0));
+        REQUIRE_THAT(b_host(9, 4), Catch::Matchers::WithinULP(500.0, 0));
     }
     Kokkos::finalize();
 }
