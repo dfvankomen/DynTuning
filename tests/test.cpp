@@ -2,9 +2,13 @@
 #include "common.hpp"
 #include "data.hpp"
 #include "data_transfers.hpp"
+#include "kernel_mvm.hpp"
+#include "kernel_vvm.hpp"
+#include "view.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <cstddef>
 #include <utility>
 
 typedef Kokkos::Cuda DeviceExecSpace;
@@ -43,8 +47,10 @@ TEST_CASE("Vector to View Tests", "views")
     Kokkos::initialize();
     {
         std::vector<double> a(N);
-        std::iota(a.begin(), a.end(), 1.0);
         std::vector<double> b(N);
+
+        // data initilization
+        std::iota(a.begin(), a.end(), 1.0);
         std::iota(b.begin(), b.end(), 1.0);
 
         constexpr auto data_names =
@@ -55,6 +61,31 @@ TEST_CASE("Vector to View Tests", "views")
         auto& a_views = std::get<find<hash("a")>(data_names)>(data_views);
         auto& b_views = std::get<find<hash("b")>(data_names)>(data_views);
 
+        auto& a_host = std::get<0>(a_views);
+        auto& b_host = std::get<0>(b_views);
+
+        // then check to make sure the values match up
+        REQUIRE_THAT(a_host(0), Catch::Matchers::WithinULP(a[0], 0));
+        REQUIRE_THAT(a_host(1), Catch::Matchers::WithinULP(a[1], 0));
+        REQUIRE_THAT(a_host(2), Catch::Matchers::WithinULP(a[2], 0));
+        REQUIRE_THAT(a_host(3), Catch::Matchers::WithinULP(a[3], 0));
+        REQUIRE_THAT(a_host(4), Catch::Matchers::WithinULP(a[4], 0));
+        REQUIRE_THAT(a_host(N - 5), Catch::Matchers::WithinULP(a[N - 5], 0));
+        REQUIRE_THAT(a_host(N - 4), Catch::Matchers::WithinULP(a[N - 4], 0));
+        REQUIRE_THAT(a_host(N - 3), Catch::Matchers::WithinULP(a[N - 3], 0));
+        REQUIRE_THAT(a_host(N - 2), Catch::Matchers::WithinULP(a[N - 2], 0));
+        REQUIRE_THAT(a_host(N - 1), Catch::Matchers::WithinULP(a[N - 1], 0));
+        // check for b
+        REQUIRE_THAT(b_host(0), Catch::Matchers::WithinULP(b[0], 0));
+        REQUIRE_THAT(b_host(1), Catch::Matchers::WithinULP(b[1], 0));
+        REQUIRE_THAT(b_host(2), Catch::Matchers::WithinULP(b[2], 0));
+        REQUIRE_THAT(b_host(3), Catch::Matchers::WithinULP(b[3], 0));
+        REQUIRE_THAT(b_host(4), Catch::Matchers::WithinULP(b[4], 0));
+        REQUIRE_THAT(b_host(N - 5), Catch::Matchers::WithinULP(b[N - 5], 0));
+        REQUIRE_THAT(b_host(N - 4), Catch::Matchers::WithinULP(b[N - 4], 0));
+        REQUIRE_THAT(b_host(N - 3), Catch::Matchers::WithinULP(b[N - 3], 0));
+        REQUIRE_THAT(b_host(N - 2), Catch::Matchers::WithinULP(b[N - 2], 0));
+        REQUIRE_THAT(b_host(N - 1), Catch::Matchers::WithinULP(b[N - 1], 0));
 
         SECTION("Testing View Tuple Reorder")
         {
@@ -67,8 +98,74 @@ TEST_CASE("Vector to View Tests", "views")
             // after flopping the dimensions, the views should now be in order of [host_views,
             // device_views, scratch_views]
         }
+    }
+    Kokkos::finalize();
+}
 
-        REQUIRE(N == 100);
+TEST_CASE("Eigen Matrix to View Tests", "views")
+{
+
+    // size of the input matrices
+    const size_t N = 10;
+    const size_t M = 5;
+    Kokkos::initialize();
+    {
+        // first value in gives .rows() and second gives .cols()
+        // eigen stores data in **column major order**.
+        Eigen::MatrixXd a(N, M);
+        Eigen::MatrixXd b(N, M);
+
+        // initialize both matrices to be identical
+        int ij = 1;
+        for (size_t i = 0; i < N; i++)
+        {
+            for (size_t j = 0; j < M; j++)
+            {
+                a(i, j) = static_cast<double>(ij);
+                b(i, j) = static_cast<double>(ij);
+                ij++;
+            }
+        }
+        // a and b are matrices from 1 to N * M now
+
+        constexpr auto data_names =
+          std::make_tuple(HashedName<hash("a")>(), HashedName<hash("b")>());
+
+        auto data_views = create_views(pack(a, b));
+
+        auto& a_views = std::get<find<hash("a")>(data_names)>(data_views);
+        auto& b_views = std::get<find<hash("b")>(data_names)>(data_views);
+
+        // and get an easy access to the views
+        auto& a_host = std::get<0>(a_views);
+        auto& b_host = std::get<0>(b_views);
+
+        // verify that the view indices match what we're expecting above
+        REQUIRE_THAT(a_host(0, 0), Catch::Matchers::WithinULP(1.0, 0));
+        REQUIRE_THAT(a_host(0, 1), Catch::Matchers::WithinULP(2.0, 0));
+        REQUIRE_THAT(a_host(0, 2), Catch::Matchers::WithinULP(3.0, 0));
+        REQUIRE_THAT(a_host(0, 3), Catch::Matchers::WithinULP(4.0, 0));
+        REQUIRE_THAT(a_host(0, 4), Catch::Matchers::WithinULP(5.0, 0));
+        // test the last row
+        REQUIRE_THAT(a_host(9, 0), Catch::Matchers::WithinULP(46.0, 0));
+        REQUIRE_THAT(a_host(9, 1), Catch::Matchers::WithinULP(47.0, 0));
+        REQUIRE_THAT(a_host(9, 2), Catch::Matchers::WithinULP(48.0, 0));
+        REQUIRE_THAT(a_host(9, 3), Catch::Matchers::WithinULP(49.0, 0));
+        REQUIRE_THAT(a_host(9, 4), Catch::Matchers::WithinULP(50.0, 0));
+
+
+        // verify that the view indices match what we're expecting above
+        REQUIRE_THAT(b_host(0, 0), Catch::Matchers::WithinULP(1.0, 0));
+        REQUIRE_THAT(b_host(0, 1), Catch::Matchers::WithinULP(2.0, 0));
+        REQUIRE_THAT(b_host(0, 2), Catch::Matchers::WithinULP(3.0, 0));
+        REQUIRE_THAT(b_host(0, 3), Catch::Matchers::WithinULP(4.0, 0));
+        REQUIRE_THAT(b_host(0, 4), Catch::Matchers::WithinULP(5.0, 0));
+        // test the last row
+        REQUIRE_THAT(b_host(9, 0), Catch::Matchers::WithinULP(46.0, 0));
+        REQUIRE_THAT(b_host(9, 1), Catch::Matchers::WithinULP(47.0, 0));
+        REQUIRE_THAT(b_host(9, 2), Catch::Matchers::WithinULP(48.0, 0));
+        REQUIRE_THAT(b_host(9, 3), Catch::Matchers::WithinULP(49.0, 0));
+        REQUIRE_THAT(b_host(9, 4), Catch::Matchers::WithinULP(50.0, 0));
     }
     Kokkos::finalize();
 }
@@ -187,7 +284,6 @@ TEST_CASE("Rank 2 View Data Transfer Tests", "data-transfer")
             }
         }
         // a and b are matrices from 1 to N * M now
-        // print the matrix
 
         constexpr auto data_names =
           std::make_tuple(HashedName<hash("a")>(), HashedName<hash("b")>());
@@ -206,19 +302,6 @@ TEST_CASE("Rank 2 View Data Transfer Tests", "data-transfer")
         // and get an easy access to the views
         auto& a_host = std::get<0>(a_views);
         auto& b_host = std::get<0>(b_views);
-
-        // verify that the view indices match what we're expecting above
-        REQUIRE_THAT(a_host(0, 0), Catch::Matchers::WithinULP(1.0, 0));
-        REQUIRE_THAT(a_host(0, 1), Catch::Matchers::WithinULP(2.0, 0));
-        REQUIRE_THAT(a_host(0, 2), Catch::Matchers::WithinULP(3.0, 0));
-        REQUIRE_THAT(a_host(0, 3), Catch::Matchers::WithinULP(4.0, 0));
-        REQUIRE_THAT(a_host(0, 4), Catch::Matchers::WithinULP(5.0, 0));
-        // test the last row
-        REQUIRE_THAT(a_host(9, 0), Catch::Matchers::WithinULP(46.0, 0));
-        REQUIRE_THAT(a_host(9, 1), Catch::Matchers::WithinULP(47.0, 0));
-        REQUIRE_THAT(a_host(9, 2), Catch::Matchers::WithinULP(48.0, 0));
-        REQUIRE_THAT(a_host(9, 3), Catch::Matchers::WithinULP(49.0, 0));
-        REQUIRE_THAT(a_host(9, 4), Catch::Matchers::WithinULP(50.0, 0));
 
         // TRANSFER THE DATA
         // Since we can't easily access the data on the device, we have to do the transfer, do a
@@ -297,6 +380,266 @@ TEST_CASE("Rank 2 View Data Transfer Tests", "data-transfer")
         REQUIRE_THAT(b_host(9, 2), Catch::Matchers::WithinULP(480.0, 0));
         REQUIRE_THAT(b_host(9, 3), Catch::Matchers::WithinULP(490.0, 0));
         REQUIRE_THAT(b_host(9, 4), Catch::Matchers::WithinULP(500.0, 0));
+    }
+    Kokkos::finalize();
+}
+
+TEST_CASE("Test Multiple View Construction", "views")
+{
+
+    // size of the input vector
+    const size_t N    = 100;
+    const size_t ncol = 5;
+    const size_t nrow = 10;
+    Kokkos::initialize();
+    {
+        std::vector<double> a(N);
+        std::vector<double> b(N);
+        Eigen::MatrixXd x(nrow, ncol);
+        Eigen::MatrixXd y(nrow, ncol);
+
+        // data initialization
+        std::iota(a.begin(), a.end(), 1.0);
+        std::iota(b.begin(), b.end(), 1.0);
+        int ij = 1;
+        for (size_t i = 0; i < nrow; i++)
+        {
+            for (size_t j = 0; j < ncol; j++)
+            {
+                x(i, j) = static_cast<double>(ij);
+                y(i, j) = static_cast<double>(ij);
+                ij++;
+            }
+        }
+        // a and b are matrices from 1 to N * M now
+
+        constexpr auto data_names = std::make_tuple(HashedName<hash("a")>(),
+                                                    HashedName<hash("b")>(),
+                                                    HashedName<hash("x")>(),
+                                                    HashedName<hash("y")>());
+
+        auto data_views = create_views(pack(a, b, x, y));
+
+        auto& a_views = std::get<find<hash("a")>(data_names)>(data_views);
+        auto& b_views = std::get<find<hash("b")>(data_names)>(data_views);
+        auto& x_views = std::get<find<hash("x")>(data_names)>(data_views);
+        auto& y_views = std::get<find<hash("y")>(data_names)>(data_views);
+
+        auto& a_host = std::get<0>(a_views);
+        auto& b_host = std::get<0>(b_views);
+        auto& x_host = std::get<0>(x_views);
+        auto& y_host = std::get<0>(y_views);
+
+
+        // then check to make sure the values match up
+        REQUIRE_THAT(a_host(0), Catch::Matchers::WithinULP(a[0], 0));
+        REQUIRE_THAT(a_host(1), Catch::Matchers::WithinULP(a[1], 0));
+        REQUIRE_THAT(a_host(N - 2), Catch::Matchers::WithinULP(a[N - 2], 0));
+        REQUIRE_THAT(a_host(N - 1), Catch::Matchers::WithinULP(a[N - 1], 0));
+        // check for b
+        REQUIRE_THAT(b_host(0), Catch::Matchers::WithinULP(b[0], 0));
+        REQUIRE_THAT(b_host(1), Catch::Matchers::WithinULP(b[1], 0));
+        REQUIRE_THAT(b_host(N - 2), Catch::Matchers::WithinULP(b[N - 2], 0));
+        REQUIRE_THAT(b_host(N - 1), Catch::Matchers::WithinULP(b[N - 1], 0));
+
+        // verify the matrix views
+        REQUIRE_THAT(x_host(0, 0), Catch::Matchers::WithinULP(1.0, 0));
+        REQUIRE_THAT(x_host(0, 1), Catch::Matchers::WithinULP(2.0, 0));
+        REQUIRE_THAT(x_host(9, 3), Catch::Matchers::WithinULP(49.0, 0));
+        REQUIRE_THAT(x_host(9, 4), Catch::Matchers::WithinULP(50.0, 0));
+        // check for y
+        REQUIRE_THAT(y_host(0, 0), Catch::Matchers::WithinULP(1.0, 0));
+        REQUIRE_THAT(y_host(0, 1), Catch::Matchers::WithinULP(2.0, 0));
+        REQUIRE_THAT(y_host(9, 3), Catch::Matchers::WithinULP(49.0, 0));
+        REQUIRE_THAT(y_host(9, 4), Catch::Matchers::WithinULP(50.0, 0));
+
+        // // test the view tuple reorder
+        // SECTION("Testing View Tuple Reorder")
+        // {
+        //     auto views_dimension_flopped =
+        //       std::make_tuple(std::make_tuple(get_v(0, 0, data_views), get_v(1, 0, data_views)),
+        //                       std::make_tuple(get_v(0, 1, data_views), get_v(1, 1, data_views)),
+        //                       std::make_tuple(get_v(0, 2, data_views), get_v(1, 2, data_views)));
+        //     // auto views_flopped_new = transpose_tuple(data_views);
+
+        //     // after flopping the dimensions, the views should now be in order of [host_views,
+        //     // device_views, scratch_views]
+        // }
+    }
+    Kokkos::finalize();
+}
+
+
+TEST_CASE("Kernel: Verify VVM Host and Device", "kernel")
+{
+    const size_t N = 100;
+
+    Kokkos::initialize();
+    {
+        std::vector<double> a(N);
+        std::vector<double> b(N);
+        std::vector<double> c(N);
+        std::vector<double> c_truth(N);
+
+        // initialize a and b
+        std::iota(a.begin(), a.end(), 1.0);
+
+        // b can just be all 10's or something
+        for (size_t i = 0; i < N; i++)
+            b[i] = 10.0;
+
+        for (size_t i = 0; i < N; i++)
+            c_truth[i] = a[i] * b[i];
+
+        constexpr auto data_names = std::make_tuple(HashedName<hash("a")>(),
+                                                    HashedName<hash("b")>(),
+                                                    HashedName<hash("c")>());
+
+        auto data_views = create_views(pack(a, b, c));
+
+        auto& a_views = std::get<find<hash("a")>(data_names)>(data_views);
+        auto& b_views = std::get<find<hash("b")>(data_names)>(data_views);
+        auto& c_views = std::get<find<hash("c")>(data_names)>(data_views);
+
+        // used for the checks after we finish
+        auto& c_host = std::get<0>(c_views);
+
+        KernelOptions options = { { DeviceSelector::HOST, DeviceSelector::DEVICE } };
+
+        // build the kernel
+        auto k = KernelVVM(options, std::as_const(a_views), std::as_const(b_views), c_views);
+
+        // then run the kernel, starting on the host
+        k(DeviceSelector::HOST);
+
+        // then verify c as an output
+        for (size_t i = 0; i < N; i++)
+            REQUIRE_THAT(c_host(i), Catch::Matchers::WithinRel(c_truth[i], 1.e-10));
+
+        // TODO: only call this if CUDA is enabled, probably
+
+        // clear the c_host back to 0's
+        for (size_t i = 0; i < N; i++)
+            c[i] = 0.0;
+
+        // verify that c_host is 0's (to be safe)
+        for (size_t i = 0; i < N; i++)
+            REQUIRE_THAT(c_host(i), Catch::Matchers::WithinULP(0.0, 0));
+
+        // then do the data transfer to device
+        for (size_t i_view = 0; i_view < 3; i_view++)
+            transfer_data_host_to_device(i_view, k.data_views_);
+
+        // then run it on device
+        k(DeviceSelector::DEVICE);
+
+        // then move it back to host for testing
+        for (size_t i_view = 0; i_view < 3; i_view++)
+            transfer_data_device_to_host(i_view, k.data_views_);
+
+        // then verify c as an output
+        for (size_t i = 0; i < N; i++)
+            REQUIRE_THAT(c_host(i), Catch::Matchers::WithinRel(c_truth[i], 1.e-10));
+
+        // done!
+    }
+    Kokkos::finalize();
+}
+
+
+
+TEST_CASE("Kernel: Verify MVM Host and Device", "kernel")
+{
+    const size_t N = 3;
+
+    Kokkos::initialize();
+    {
+        Eigen::MatrixXd A(N, N);
+        std::vector<double> b(N);
+        std::vector<double> c(N);
+        std::vector<double> c_truth(N, 0.0);
+
+        // initialize the A matrix
+        int ij = 0;
+        for (size_t i = 0; i < N; i++)
+            for (size_t j = 0; j < N; j++)
+                A(i, j) = static_cast<double>(ij++);
+
+        // b can just be all 10's
+        for (size_t i = 0; i < N; i++)
+            b[i] = 10.0;
+
+        // calculate the truth
+        for (size_t i = 0; i < N; i++)
+            for (size_t j = 0; j < N; j++)
+                c_truth[i] += A(i, j) * b[j];
+
+
+        constexpr auto data_names = std::make_tuple(HashedName<hash("A")>(),
+                                                    HashedName<hash("b")>(),
+                                                    HashedName<hash("c")>());
+
+        auto data_views = create_views(pack(A, b, c));
+
+        auto& A_views = std::get<find<hash("A")>(data_names)>(data_views);
+        auto& b_views = std::get<find<hash("b")>(data_names)>(data_views);
+        auto& c_views = std::get<find<hash("c")>(data_names)>(data_views);
+
+        // used for the checks after we finish
+        auto& A_host = std::get<0>(A_views);
+        auto& c_host = std::get<0>(c_views);
+
+        print_view(A_host);
+
+        KernelOptions options = { { DeviceSelector::HOST, DeviceSelector::DEVICE } };
+
+        // build the kernel
+        auto k = KernelMVM(options, std::as_const(A_views), std::as_const(b_views), c_views);
+
+        // then run the kernel, starting on the host
+        k(DeviceSelector::HOST);
+
+        // then verify c as an output
+        for (size_t i = 0; i < N; i++)
+            REQUIRE_THAT(c_host(i), Catch::Matchers::WithinRel(c_truth[i], 1.e-10));
+
+        // TODO: only call this if CUDA is enabled, probably
+
+        // clear the c_host back to 0's
+        for (size_t i = 0; i < N; i++)
+            c[i] = 0.0;
+
+        // verify that c_host is 0's (to be safe)
+        for (size_t i = 0; i < N; i++)
+            REQUIRE_THAT(c_host(i), Catch::Matchers::WithinULP(0.0, 0));
+
+        // then do the data transfer to device
+        for (size_t i_view = 0; i_view < 3; i_view++)
+            transfer_data_host_to_device(i_view, k.data_views_);
+
+        // then run it on device
+        k(DeviceSelector::DEVICE);
+
+        // then move it back to host for testing
+        for (size_t i_view = 0; i_view < 3; i_view++)
+            transfer_data_device_to_host(i_view, k.data_views_);
+
+
+        std::cout << "C truth: " << std::endl;
+        for (size_t i = 0; i < N; i++)
+            std::cout << c_truth[i] << " ";
+        std::cout << std::endl;
+
+        std::cout << "C host: " << std::endl;
+        print_view(c_host);
+
+        // then verify c as an output
+        // TODO: this is going to fail because of a lack of parallel reductions!
+        // this need to be reenabled once that has been solved!
+        // for (size_t i = 0; i < N; i++)
+        //     REQUIRE_THAT(c_host(i), Catch::Matchers::WithinRel(c_truth[i], 1.e-10));
+
+        // done!
     }
     Kokkos::finalize();
 }
