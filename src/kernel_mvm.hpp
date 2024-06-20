@@ -8,6 +8,8 @@
 
 // https://github.com/kokkos/kokkos-tutorials/blob/main/Exercises/mdrange/Solution/exercise_mdrange_solution.cpp
 
+// TODO: this kernel requires parallel reduce!
+
 struct FunctorMVM_Host
 {
     template<typename ViewsTuple, typename Index>
@@ -19,6 +21,8 @@ struct FunctorMVM_Host
         auto b = std::get<2>(views);
         b(i) += A(i, j) * x(j);
 
+        // need to return b(i) instead of trying to update automatically!
+
         // printf("%f = %f * %f\n", A(i, j) * x(j), A(i,j), x(j));
     }
 };
@@ -28,13 +32,16 @@ struct FunctorMVM_Device
     template<typename ViewsTuple, typename Index>
     KOKKOS_FUNCTION void operator()(ViewsTuple views, const Index i, const Index j) const
     {
+        // NOTE: race condition because we're trying to update b(i) at the same time
 
         auto A = std::get<0>(views);
         auto x = std::get<1>(views);
         auto b = std::get<2>(views);
-        b(j) += A(j, i) * x(i);
+        b(i) += A(i, j) * x(j);
 
-        // printf("%f = %f * %f\n", A(i, j) * x(j), A(i,j), x(j));
+        // need to return b(i) instead of trying to update automatically!
+
+        // printf("( %d %d ) %f = %f * %f\n", i, j, A(i, j) * x(j), A(i, j), x(j));
     }
 };
 
