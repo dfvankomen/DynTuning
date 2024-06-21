@@ -1049,7 +1049,7 @@ class Algorithm
         auto views_d = std::get<1>(kernel.data_views_);
 
 
-        for (size_t j_it = 0; j_it < kernel_selector.input_id_local.size(); j_it++)
+        for (size_t j_it = 0; j_it < kernel_selector.output_id_local.size(); j_it++)
         {
             size_t j_local             = kernel_selector.output_id_local[j_it];
             size_t j_global            = kernel_selector.output_id[j_it];
