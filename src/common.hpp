@@ -1,12 +1,12 @@
 #pragma once
 
 #include <iostream>
-#include <numeric>
 #include <map>
+#include <numeric>
 
-//#ifdef USE_EIGEN
+// #ifdef USE_EIGEN
 #include "Eigen"
-//#endif
+// #endif
 
 // ensure KOKKOS_HOST is set
 #ifndef KOKKOS_HOST
@@ -17,6 +17,9 @@
 #ifndef KOKKOS_DEVICE
 #define KOKKOS_DEVICE Cuda
 #endif
+
+// convenience Eigen typedefs
+typedef Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> DynMatrix2D;
 
 // device selector options
 enum class DeviceSelector
@@ -60,13 +63,13 @@ inline auto pack(ParameterTypes&... params) -> std::tuple<ParameterTypes&...>
 
 // utility function for iterating over a tuple of unknown length
 template<typename LambdaType, std::size_t I = 0, typename... T>
-inline typename std::enable_if<I == sizeof...(T), void>::type
-iter_tuple(const std::tuple<T...>& t, const LambdaType& lambda)
+inline typename std::enable_if<I == sizeof...(T), void>::type iter_tuple(const std::tuple<T...>& t,
+                                                                         const LambdaType& lambda)
 {
 }
 template<typename LambdaType, std::size_t I = 0, typename... T>
-inline typename std::enable_if <I < sizeof...(T), void>::type
-iter_tuple(const std::tuple<T...>& t, const LambdaType& lambda)
+  inline typename std::enable_if <
+  I<sizeof...(T), void>::type iter_tuple(const std::tuple<T...>& t, const LambdaType& lambda)
 {
     auto& elem = std::get<I>(t);
     lambda(I, elem);
@@ -76,28 +79,34 @@ iter_tuple(const std::tuple<T...>& t, const LambdaType& lambda)
 
 // base case for recursion of find_tuple
 template<typename LambdaType, std::size_t I = 0, typename... T>
-inline typename std::enable_if<I == sizeof...(T), void>::type
-find_tuple(const std::tuple<T...>& t, std::size_t idx, const LambdaType& lambda)
+inline typename std::enable_if<I == sizeof...(T), void>::type find_tuple(const std::tuple<T...>& t,
+                                                                         std::size_t idx,
+                                                                         const LambdaType& lambda)
 {
-    // if we get to this point, then there's no index here, so we 
-    throw std::out_of_range("Could not find index " + std::to_string(idx) + " in requested tuple. The value is too large!");
+    // if we get to this point, then there's no index here, so we
+    throw std::out_of_range("Could not find index " + std::to_string(idx) +
+                            " in requested tuple. The value is too large!");
 }
 
 // all other cases, it's a recursive template that iterates through and finds the item in the tuple
-// note that the lambda must have the right typing cast when calling it, as it needs to receive itself
+// note that the lambda must have the right typing cast when calling it, as it needs to receive
+// itself
 template<typename LambdaType, std::size_t I = 0, typename... T>
-inline typename std::enable_if<I < sizeof...(T), void>::type
-find_tuple(const std::tuple<T...>& t, std::size_t idx, const LambdaType& lambda)
+  inline typename std::enable_if < I<sizeof...(T), void>::type find_tuple(const std::tuple<T...>& t,
+                                                                          std::size_t idx,
+                                                                          const LambdaType& lambda)
 {
 
     // if we've found the index, we can execute the lambda and return out
-    if (I == idx){
-        auto &elem = std::get<I>(t);
+    if (I == idx)
+    {
+        auto& elem = std::get<I>(t);
         lambda(elem);
     }
     // otherwise we continue to recurse through until we find the lambda
-    else {
-        find_tuple<LambdaType, I+1, T...>(t, idx, lambda);
+    else
+    {
+        find_tuple<LambdaType, I + 1, T...>(t, idx, lambda);
     }
 }
 
@@ -121,14 +130,19 @@ get_tuple_item(int i, const std::tuple<T...>& t)
 inline DeviceSelector set_device(int argc, char* argv[])
 {
     DeviceSelector device = DeviceSelector::AUTO;
-    for (int i = 0; i < argc; i++) {
+    for (int i = 0; i < argc; i++)
+    {
         std::string arg = argv[i];
-        if (arg.find("--device=") == 0) {
-            arg = arg.substr(9);
-            const char *s = &arg.c_str()[0];
-            if (strcmp(s, "device") == 0) {
+        if (arg.find("--device=") == 0)
+        {
+            arg           = arg.substr(9);
+            const char* s = &arg.c_str()[0];
+            if (strcmp(s, "device") == 0)
+            {
                 device = DeviceSelector::DEVICE;
-            } else if (strcmp(s, "host") == 0) {
+            }
+            else if (strcmp(s, "host") == 0)
+            {
                 device = DeviceSelector::HOST;
             }
             std::cout << "device = " << arg << std::endl;
@@ -143,9 +157,11 @@ inline DeviceSelector set_device(int argc, char* argv[])
 inline int set_N(int argc, char* argv[])
 {
     int N = 5;
-    for (int i = 0; i < argc; i++) {
+    for (int i = 0; i < argc; i++)
+    {
         std::string arg = argv[i];
-        if (arg.find("--N=") == 0) {
+        if (arg.find("--N=") == 0)
+        {
             N = std::atoi(arg.substr(4).c_str());
             break;
         }
@@ -157,9 +173,11 @@ inline int set_N(int argc, char* argv[])
 inline bool set_reordering(int argc, char* argv[])
 {
     bool flag = false;
-    for (int i = 0; i < argc; i++) {
+    for (int i = 0; i < argc; i++)
+    {
         std::string arg = argv[i];
-        if (arg.find("--reordering") == 0) {
+        if (arg.find("--reordering") == 0)
+        {
             flag = true;
             break;
         }
@@ -172,9 +190,11 @@ inline bool set_reordering(int argc, char* argv[])
 inline int set_initialize(int argc, char* argv[])
 {
     bool flag = true;
-    for (int i = 0; i < argc; i++) {
+    for (int i = 0; i < argc; i++)
+    {
         std::string arg = argv[i];
-        if (arg.find("--no-initialize") == 0) {
+        if (arg.find("--no-initialize") == 0)
+        {
             flag = false;
             break;
         }
@@ -187,9 +207,11 @@ inline int set_initialize(int argc, char* argv[])
 inline int set_num_sims(int argc, char* argv[])
 {
     int N = 5;
-    for (int i = 0; i < argc; i++) {
+    for (int i = 0; i < argc; i++)
+    {
         std::string arg = argv[i];
-        if (arg.find("--num_sims=") == 0) {
+        if (arg.find("--num_sims=") == 0)
+        {
             N = std::atoi(arg.substr(11).c_str());
             break;
         }
@@ -201,9 +223,11 @@ inline int set_num_sims(int argc, char* argv[])
 inline int set_num_chain_runs(int argc, char* argv[])
 {
     int N = 1;
-    for (int i = 0; i < argc; i++) {
+    for (int i = 0; i < argc; i++)
+    {
         std::string arg = argv[i];
-        if (arg.find("--chain_runs=") == 0) {
+        if (arg.find("--chain_runs=") == 0)
+        {
             N = std::atoi(arg.substr(13).c_str());
             break;
         }
@@ -217,9 +241,11 @@ inline int set_num_chain_runs(int argc, char* argv[])
 inline unsigned int set_single_chain_run(int argc, char* argv[])
 {
     unsigned int N = 0;
-    for (int i = 0; i < argc; i++) {
+    for (int i = 0; i < argc; i++)
+    {
         std::string arg = argv[i];
-        if (arg.find("--single_chain=") == 0) {
+        if (arg.find("--single_chain=") == 0)
+        {
             N = std::atoi(arg.substr(15).c_str());
             break;
         }
@@ -229,11 +255,15 @@ inline unsigned int set_single_chain_run(int argc, char* argv[])
 }
 #endif
 
-template <typename T>
-inline void print_is_reference(const T& arg) {
-    if constexpr (std::is_reference_v<T>) {
+template<typename T>
+inline void print_is_reference(const T& arg)
+{
+    if constexpr (std::is_reference_v<T>)
+    {
         std::cout << "The argument is a reference." << std::endl;
-    } else {
+    }
+    else
+    {
         std::cout << "The argument is not a reference." << std::endl;
     }
 }
