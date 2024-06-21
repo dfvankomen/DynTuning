@@ -2,6 +2,7 @@
 
 #include "common.hpp"
 #include "data_deps.hpp"
+#include "data_transfers.hpp"
 #include "kernel.hpp"
 
 #include <functional>
@@ -677,28 +678,31 @@ class Algorithm
                 }
 
 #ifdef DYNTUNE_DEBUG_ENABLED
-                std::cout << "Chain, Kernel " << i_chain << ", " << _il << " Output IDs (global): ";
+                std::cout << "Chain, Kernel (" << i_chain << ", " << _il
+                          << ") Output IDs (global): ";
                 for (auto opid : ksel_l.output_id)
                 {
                     std::cout << opid << " ";
                 }
                 std::cout << std::endl;
 
-                std::cout << "Chain, Kernel " << i_chain << ", " << _il << " Input IDs (global): ";
+                std::cout << "Chain, Kernel (" << i_chain << ", " << _il
+                          << ") Input IDs (global): ";
                 for (auto opid : ksel_l.input_id)
                 {
                     std::cout << opid << " ";
                 }
                 std::cout << std::endl;
 
-                std::cout << "Chain, Kernel " << i_chain << ", " << _il << " Output IDs (local): ";
+                std::cout << "Chain, Kernel (" << i_chain << ", " << _il
+                          << ") Output IDs (local): ";
                 for (auto opid : ksel_l.output_id_local)
                 {
                     std::cout << opid << " ";
                 }
                 std::cout << std::endl;
 
-                std::cout << "Chain, Kernel " << i_chain << ", " << _il << " Input IDs (local): ";
+                std::cout << "Chain, Kernel (" << i_chain << ", " << _il << ") Input IDs (local): ";
                 for (auto opid : ksel_l.input_id_local)
                 {
                     std::cout << opid << " ";
@@ -826,14 +830,14 @@ class Algorithm
                         auto views_h = std::get<0>(k.data_views_);
                         auto views_d = std::get<1>(k.data_views_);
 
-                        do_data_transfer_to_host(ksel,
-                                                 k,
-                                                 i,
-                                                 kernel_device,
-                                                 elapsed,
-                                                 timer,
-                                                 tracked_input_transfers,
-                                                 i_chain);
+                        do_input_data_transfer(ksel,
+                                               k,
+                                               i,
+                                               kernel_device,
+                                               elapsed,
+                                               timer,
+                                               tracked_input_transfers,
+                                               i_chain);
 
                         // execute the kernel
                         timer.reset(); // start the timer
@@ -841,60 +845,16 @@ class Algorithm
                         elapsed += timer.seconds();
 
                         // copy outputs
+                        do_output_data_transfer(ksel,
+                                                k,
+                                                i,
+                                                kernel_device,
+                                                elapsed,
+                                                timer,
+                                                tracked_input_transfers,
+                                                i_chain);
 
-                        // 3: loop over the outputs
-                        // for (size_t j : ksel.output_id)
-                        for (auto idx = 0; idx < ksel.output_id_local.size(); idx++)
-                        {
-                            size_t j                   = ksel.output_id_local[idx];
-                            size_t j_global            = ksel.output_id[idx];
-                            DeviceSelector view_device = ksel.output_device[idx];
-                            // no need to copy if data is already on the correct device
-                            if (view_device == kernel_device)
-                                continue;
-                            // 4: get the host view
-                            find_tuple(views_h,
-                                       j,
-                                       [&]<typename HostViewType>(HostViewType& view_h) { // view_h
-                                // 5: get the device view
-                                find_tuple(
-                                  views_d,
-                                  j,
-                                  [&]<typename DeviceViewType>(DeviceViewType& view_d) { // view_d
-                                    // copy the data, ensure direction is correct
-                                    timer.reset(); // start the timer
 
-                                    if constexpr (HostViewType::rank == DeviceViewType::rank)
-                                    {
-                                        if (view_device == DeviceSelector::DEVICE)
-                                        {
-#ifdef DYNTUNE_DEBUG_ENABLED
-                                            std::cout << "chain_" << i_chain << ": ker_" << i
-                                                      << ":  OUTPUT -> host-2-device : view " << j
-                                                      << " (global " << j_global << ")"
-                                                      << std::endl;
-#endif
-                                        Kokkos::deep_copy(view_d, view_h);
-                                    }
-                                    else
-                                    {
-#ifdef DYNTUNE_DEBUG_ENABLED
-                                        std::cout << "chain_" << i_chain << ": ker_" << i
-                                                  << ":  OUTPUT -> device-2-host : view " << j
-                                                      << " (global " << j_global << ")"
-                                                      << std::endl;
-#endif
-                                        Kokkos::deep_copy(view_h, view_d);
-                                    }
-                                    elapsed += timer.seconds();
-                                    }
-
-                                    // tick up our tracked output transfers
-                                    tracked_output_transfers++;
-                                }); // 5
-                            });     // 4
-
-                        } // 3
                     }); // 2
 
                 } // 1
@@ -1004,14 +964,14 @@ class Algorithm
     }
 
     template<typename KernelType>
-    void do_data_transfer_to_host(KernelSelector& kernel_selector,
-                                  KernelType& kernel,
-                                  size_t& kernel_id,
-                                  DeviceSelector& kernel_device,
-                                  double& elapsed,
-                                  Kokkos::Timer& timer,
-                                  uint32_t& tracked_input_transfers,
-                                  uint32_t& chain_id)
+    void do_input_data_transfer(KernelSelector& kernel_selector,
+                                KernelType& kernel,
+                                size_t& kernel_id,
+                                DeviceSelector& kernel_device,
+                                double& elapsed,
+                                Kokkos::Timer& timer,
+                                uint32_t& tracked_input_transfers,
+                                uint32_t& chain_id)
     {
 
         // get the kernel views
@@ -1068,32 +1028,51 @@ class Algorithm
                 continue;
             }
 
-            // now we need to iterate through the views
+            // do the data transfer
+            transfer_data_host_to_device(j_it, kernel.data_views_, elapsed, timer);
 
-            find_tuple(views_h,
-                       j_local,
-                       [&]<typename HostViewType>(HostViewType& view_h)
-            {
-                find_tuple(views_d,
-                           j_local,
-                           [&]<typename DeviceViewType>(DeviceViewType& view_d)
-                {
-
-                // copy the data over, but only if the data types match
-#ifdef DYNTUNE_DEBUG_ENABLED
-                    std::cout << "chain_" << chain_id << ": ker_" << kernel_id
-                              << ":  INPUT -> host-2-device : view " << j_local << " (global "
-                              << j_global << ")" << std::endl;
-#endif
-
-                    timer.reset(); // start the timer for profiling
-                    Kokkos::deep_copy(view_d, view_h);
-                    elapsed += timer.seconds();
-
-                    tracked_input_transfers++;
-                }); // end views_d finding
-            });     // end views_h finding
         } // end input list iteration
+    }
+
+    template<typename KernelType>
+    void do_output_data_transfer(KernelSelector& kernel_selector,
+                                 KernelType& kernel,
+                                 size_t& kernel_id,
+                                 DeviceSelector& kernel_device,
+                                 double& elapsed,
+                                 Kokkos::Timer& timer,
+                                 uint32_t& tracked_input_transfers,
+                                 uint32_t& chain_id)
+    {
+        // get the kernel views
+        auto views_h = std::get<0>(kernel.data_views_);
+        auto views_d = std::get<1>(kernel.data_views_);
+
+
+        for (size_t j_it = 0; j_it < kernel_selector.input_id_local.size(); j_it++)
+        {
+            size_t j_local             = kernel_selector.output_id_local[j_it];
+            size_t j_global            = kernel_selector.output_id[j_it];
+            DeviceSelector view_device = kernel_selector.output_device[j_it];
+
+            // no need to copy if the data is already on the correct device
+            if (view_device == kernel_device)
+                continue;
+
+            if (view_device == DeviceSelector::DEVICE)
+            {
+                // if the device is supposed to be the device, then we want to perform the copy to
+                // device
+                transfer_data_host_to_device(j_local, kernel.data_views_, elapsed, timer);
+            }
+            else
+            {
+                // otherwise, we want todo our copy from device to host
+                transfer_data_device_to_host(j_local, kernel.data_views_, elapsed, timer);
+            }
+        }
+
+        //
     }
 
 }; // end Algorithm

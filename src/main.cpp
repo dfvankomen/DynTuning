@@ -61,7 +61,7 @@ int main(int argc, char* argv[])
         std::vector<double> q(N);
         std::vector<double> r(N);
         std::vector<double> s(N);
-        Eigen::MatrixXd t(N, N);
+        DynMatrix2D t(N, N);
         std::vector<double> u(N);
         std::vector<double> v(N);
         std::vector<double> w(N);
@@ -164,7 +164,7 @@ int main(int argc, char* argv[])
         auto k1 =
           KernelVVM(options, std::as_const(q_views), std::as_const(r_views), s_views); // vvm
         auto k2 =
-          KernelMVM(options, std::as_const(t_views), std::as_const(s_views), u_views); // mvm
+          KernelMVM(options, std::as_const(t_views), std::as_const(r_views), x_views); // mvm
         auto k3 =
           KernelVVM(options, std::as_const(v_views), std::as_const(u_views), w_views); // vvm
         // auto k5 = KernelVVM(options, std::as_const(v_views), std::as_const(u_views), w_views); //
@@ -175,8 +175,8 @@ int main(int argc, char* argv[])
         // register all kernels info an Algorithm
         // auto kernels = pack(k1, k2, k3, k4);
         printf("\nbuilding algorithm\n");
-        // auto kernels = pack(k1, k3, k4);
-        auto kernels = pack(k2);
+        auto kernels = pack(k1, k3, k4);
+        // auto kernels = pack(k2);
         Algorithm algo(kernels, data_views, reordering);
         algo.set_num_chain_runs(num_chain_runs);
 
