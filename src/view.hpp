@@ -24,7 +24,9 @@ using DeviceViewLayout  = Kokkos::LayoutLeft;
 using ScratchViewLayout = DeviceViewLayout;
 
 // generator
-template<typename ExecutionSpace, ViewMemoryType MemoryType>
+template<typename ExecutionSpace,
+         ViewMemoryType MemoryType,
+         typename ArrayLayoutType = typename ExecutionSpace::array_layout>
 struct Views;
 using HostViewGenerator    = Views<HostViewSpace, ViewMemoryType::NONOWNING>;
 using DeviceViewGenerator  = Views<DeviceViewSpace, ViewMemoryType::OWNING>;
@@ -93,7 +95,7 @@ struct EquivalentView<ExecutionSpace, MemoryLayout, T>
 // Views
 //=============================================================================
 
-template<typename ExecutionSpace, ViewMemoryType MemoryType>
+template<typename ExecutionSpace, ViewMemoryType MemoryType, typename ArrayLayoutType>
 struct Views
 {
     // Create a view for a given executation space and C++ data structure
@@ -145,8 +147,12 @@ struct Views
             // this differs from the default view which is LayoutRight.
             // originally the typename Kokkos::LayoutLeft was actually
             // typename ExecutationSpace::array_layout
-            using ViewType =
-              typename EquivalentView<ExecutionSpace, typename Kokkos::LayoutLeft, T>::type;
+            // TODO: a constexpr for if it's row major or not
+            using ViewType = typename EquivalentView<ExecutionSpace,
+                                                     typename ExecutionSpace::array_layout,
+                                                     T>::type;
+            //   typename EquivalentView<ExecutionSpace, typename Kokkos::LayoutLeft, T>::type;
+
             // using ViewType = typename EquivalentView<ExecutionSpace, T>::type;
             return ViewType(const_cast<ViewType::value_type*>(matrix.data()),
                             static_cast<size_t>(matrix.rows()),
@@ -155,7 +161,10 @@ struct Views
         // tmp space on host with same layout as the device
         else if constexpr (MemoryType == ViewMemoryType::TMP)
         {
-            using ViewType = typename EquivalentView<ExecutionSpace, Kokkos::LayoutLeft, T>::type;
+            // TODO: this is kind of dirty/hacky, as we should be passing the data in via
+            // ArrayLayoutType instead of ScratchViewLayout, but this gets it working properly for
+            // now
+            using ViewType = typename EquivalentView<ExecutionSpace, ScratchViewLayout, T>::type;
             return ViewType("",
                             static_cast<size_t>(matrix.rows()),
                             static_cast<size_t>(matrix.cols()));
@@ -163,7 +172,10 @@ struct Views
         // device with ideal device layout
         else if constexpr (MemoryType == ViewMemoryType::OWNING)
         {
-            using ViewType = typename EquivalentView<ExecutionSpace, Kokkos::LayoutLeft, T>::type;
+            // TODO: should this be using our template type?
+            using ViewType = typename EquivalentView<ExecutionSpace,
+                                                     typename ExecutionSpace::array_layout,
+                                                     T>::type;
             return ViewType("", matrix.rows(), matrix.cols());
         }
     }
