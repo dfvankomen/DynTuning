@@ -2,7 +2,7 @@
   
 # install dependencies
 sudo apt-get update
-sudo apt-get install -y cmake
+sudo apt-get install -y cmake gdb cmake-curses-gui
 
 # install cuda
 if [[ ! -d "${CUDA_HOME}" ]]; then
