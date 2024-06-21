@@ -4,7 +4,10 @@
 
 #include <stdexcept>
 
+// just uncomment this if you want to enable it (or we can enable in cmake)
+// #define DYNTUNE_DEBUG_DATA_TRANSFER
 
+// TODO: add timers back in (could do a null pointer as default)
 template<typename ViewCollection>
 void transfer_data_host_to_device(size_t tuple_idx, ViewCollection& view_collection)
 {
@@ -13,8 +16,10 @@ void transfer_data_host_to_device(size_t tuple_idx, ViewCollection& view_collect
     auto views_d  = std::get<1>(view_collection);
     auto views_sc = std::get<2>(view_collection);
 
+#ifdef DYNTUNE_DEBUG_DATA_TRANSFER
     std::cout << "Host to Device Data tranfer initialized..." << std::endl;
     std::cout << "  Tuple index is: " << tuple_idx << std::endl;
+#endif
 
     // now we basically want to just find the view and do some checks based on the rank
     find_tuple(views_h,
@@ -24,8 +29,10 @@ void transfer_data_host_to_device(size_t tuple_idx, ViewCollection& view_collect
         // BEGIN LOGIC FOR RANK 1
         if constexpr (HostViewType::rank == 1)
         {
-            // Rank 1 consists of 1D vectors that just go from host to device
+// Rank 1 consists of 1D vectors that just go from host to device
+#ifdef DYNTUNE_DEBUG_DATA_TRANSFER
             std::cout << "  Host views are of rank 1" << std::endl;
+#endif
 
             // iterate through the device views
             find_tuple(views_d,
@@ -36,7 +43,9 @@ void transfer_data_host_to_device(size_t tuple_idx, ViewCollection& view_collect
                 if constexpr (DeviceViewType::rank == 1)
                 {
                     // do the transfer
+#ifdef DYNTUNE_DEBUG_DATA_TRANSFER
                     std::cout << "  Rank 1 transferring to device!" << std::endl;
+#endif
                     Kokkos::deep_copy(view_d, view_h);
                 }
                 else
@@ -49,7 +58,9 @@ void transfer_data_host_to_device(size_t tuple_idx, ViewCollection& view_collect
         // BEGIN LOGIC FOR RANK 2
         else if constexpr (HostViewType::rank == 2)
         {
+#ifdef DYNTUNE_DEBUG_DATA_TRANSFER
             std::cout << "  Host views are of rank 2" << std::endl;
+#endif
             find_tuple(views_sc,
                        tuple_idx,
                        [&]<typename ScratchViewType>(ScratchViewType& view_sc)
@@ -57,7 +68,9 @@ void transfer_data_host_to_device(size_t tuple_idx, ViewCollection& view_collect
                 // make sure the compiler only considers matches of rank 2
                 if constexpr (ScratchViewType::rank == 2)
                 {
+#ifdef DYNTUNE_DEBUG_DATA_TRANSFER
                     std::cout << "  Rank 2 transfering to scratch!" << std::endl;
+#endif
 
                     Kokkos::deep_copy(view_sc, view_h);
 
@@ -69,7 +82,9 @@ void transfer_data_host_to_device(size_t tuple_idx, ViewCollection& view_collect
                         // once again, make sure the compiler only considers matches of rank 2
                         if constexpr (DeviceViewType::rank == 2)
                         {
+#ifdef DYNTUNE_DEBUG_DATA_TRANSFER
                             std::cout << "  Rank 2 transferring to device!" << std::endl;
+#endif
 
                             Kokkos::deep_copy(view_d, view_sc);
                         }
@@ -98,8 +113,10 @@ void transfer_data_device_to_host(size_t tuple_idx, ViewCollection& view_collect
     auto views_d  = std::get<1>(view_collection);
     auto views_sc = std::get<2>(view_collection);
 
+#ifdef DYNTUNE_DEBUG_DATA_TRANSFER
     std::cout << "Device to Host data transfer initialized..." << std::endl;
     std::cout << "  Tuple index is: " << tuple_idx << std::endl;
+#endif
 
     // just like the function above, we want to find the view and do some checks absed on the rank
     // but this time we go backward! Device to host or device -> scratch -> host
@@ -111,7 +128,9 @@ void transfer_data_device_to_host(size_t tuple_idx, ViewCollection& view_collect
         if constexpr (DeviceViewType::rank == 1)
         {
             // Rank 1 consists of 1D vectors that just go from device to host
+#ifdef DYNTUNE_DEBUG_DATA_TRANSFER
             std::cout << "  Device views are of rank 1" << std::endl;
+#endif
 
             // iterate through the host views
             find_tuple(views_h,
@@ -122,7 +141,9 @@ void transfer_data_device_to_host(size_t tuple_idx, ViewCollection& view_collect
                 if constexpr (HostViewType::rank == 1)
                 {
                     // do the transfer
+#ifdef DYNTUNE_DEBUG_DATA_TRANSFER
                     std::cout << "  Rank 1 transferring to host!" << std::endl;
+#endif
                     Kokkos::deep_copy(view_h, view_d);
                 }
                 else
@@ -135,7 +156,9 @@ void transfer_data_device_to_host(size_t tuple_idx, ViewCollection& view_collect
         // BEGIN LOGIC FOR RANK 2
         else if constexpr (DeviceViewType::rank == 2)
         {
+#ifdef DYNTUNE_DEBUG_DATA_TRANSFER
             std::cout << "  Device views are of rank 2" << std::endl;
+#endif
             find_tuple(views_sc,
                        tuple_idx,
                        [&]<typename ScratchViewType>(ScratchViewType& view_sc)
@@ -143,7 +166,9 @@ void transfer_data_device_to_host(size_t tuple_idx, ViewCollection& view_collect
                 // make sure the compiler only consders matches of rank 2
                 if constexpr (ScratchViewType::rank == 2)
                 {
+#ifdef DYNTUNE_DEBUG_DATA_TRANSFER
                     std::cout << "  Rank 2 transferring to scratch!" << std::endl;
+#endif
 
                     Kokkos::deep_copy(view_sc, view_d);
 
@@ -155,7 +180,9 @@ void transfer_data_device_to_host(size_t tuple_idx, ViewCollection& view_collect
                         // once again, make sure the compiler only considres matches of rank 2
                         if constexpr (HostViewType::rank == 2)
                         {
+#ifdef DYNTUNE_DEBUG_DATA_TRANSFER
                             std::cout << "  Rank 2 is transferring to host!" << std::endl;
+#endif
 
                             Kokkos::deep_copy(view_h, view_sc);
                         }
