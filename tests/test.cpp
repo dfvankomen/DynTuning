@@ -544,6 +544,10 @@ TEST_CASE("Kernel: Verify VVM Host and Device", "kernel")
         // then run it on device
         k(DeviceSelector::DEVICE);
 
+        // verify that c_host is still zeros, to make sure kernel worked on device
+        for (size_t i = 0; i < N; i++)
+            REQUIRE_THAT(c_host(i), Catch::Matchers::WithinULP(0.0, 0));
+
         // then move it back to host for testing
         for (size_t i_view = 0; i_view < 3; i_view++)
             transfer_data_device_to_host(i_view, k.data_views_);
