@@ -3,7 +3,6 @@
 #include "data.hpp"
 
 #include <cstddef>
-#include <optional>
 #include <stdexcept>
 
 // just uncomment this if you want to enable it (or we can enable in cmake)
@@ -112,17 +111,15 @@ template<typename ViewCollection, typename Timer>
 void transfer_data_host_to_device(size_t tuple_idx,
                                   ViewCollection& view_collection,
                                   double& elapsed,
-                                  Timer& timer = nullptr)
+                                  Timer& timer)
 {
-    // reset the timer if possible
-    if (timer)
-        timer.reset();
+    // reset the timer
+    timer.reset();
 
     transfer_data_host_to_device(tuple_idx, view_collection);
 
     // add the amount of seconds to the timer
-    if (timer)
-        elapsed += timer.seconds();
+    elapsed += timer.seconds();
 }
 
 template<typename ViewCollection>
@@ -229,15 +226,13 @@ template<typename ViewCollection, typename Timer>
 void transfer_data_device_to_host(size_t tuple_idx,
                                   ViewCollection& view_collection,
                                   double& elapsed,
-                                  Timer& timer = nullptr)
+                                  Timer& timer)
 {
-    // reset the timer if possible
-    if (timer)
-        timer.reset();
+    // reset the timer
+    timer.reset();
 
     transfer_data_device_to_host(tuple_idx, view_collection);
 
     // add the amount of seconds to the timer
-    if (timer)
-        elapsed += timer.seconds();
+    elapsed += timer.seconds();
 }
