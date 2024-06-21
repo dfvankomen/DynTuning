@@ -284,16 +284,6 @@ TEST_CASE("Rank 2 View Data Transfer Tests", "data-transfer")
         }
         // a and b are matrices from 1 to N * M now
 
-        std::cout << "A from eigen: " << std::endl;
-        for (size_t i = 0; i < N; i++)
-        {
-            for (size_t j = 0; j < M; j++)
-            {
-                std::cout << A(i, j) << " ";
-            }
-            std::cout << std::endl;
-        }
-
         constexpr auto data_names =
           std::make_tuple(HashedName<hash("A")>(), HashedName<hash("B")>());
 
@@ -311,8 +301,6 @@ TEST_CASE("Rank 2 View Data Transfer Tests", "data-transfer")
         // and get an easy access to the views
         auto& A_host = std::get<0>(A_views);
         auto& B_host = std::get<0>(B_views);
-
-        print_view(A_host);
 
         // TRANSFER THE DATA
         // Since we can't easily access the data on the device, we have to do the transfer, do a
