@@ -2,6 +2,8 @@
 #include "common.hpp"
 #include "data.hpp"
 
+#include <cstddef>
+#include <optional>
 #include <stdexcept>
 
 // just uncomment this if you want to enable it (or we can enable in cmake)
@@ -105,6 +107,24 @@ void transfer_data_host_to_device(size_t tuple_idx, ViewCollection& view_collect
     });
 }
 
+
+template<typename ViewCollection, typename Timer>
+void transfer_data_host_to_device(size_t tuple_idx,
+                                  ViewCollection& view_collection,
+                                  double& elapsed,
+                                  Timer& timer = nullptr)
+{
+    // reset the timer if possible
+    if (timer)
+        timer.reset();
+
+    transfer_data_host_to_device(tuple_idx, view_collection);
+
+    // add the amount of seconds to the timer
+    if (timer)
+        elapsed += timer.seconds();
+}
+
 template<typename ViewCollection>
 void transfer_data_device_to_host(size_t tuple_idx, ViewCollection& view_collection)
 {
@@ -202,4 +222,22 @@ void transfer_data_device_to_host(size_t tuple_idx, ViewCollection& view_collect
             });
         } // END SPLIT FOR RANK 1 AND 2
     });
+}
+
+
+template<typename ViewCollection, typename Timer>
+void transfer_data_device_to_host(size_t tuple_idx,
+                                  ViewCollection& view_collection,
+                                  double& elapsed,
+                                  Timer& timer = nullptr)
+{
+    // reset the timer if possible
+    if (timer)
+        timer.reset();
+
+    transfer_data_device_to_host(tuple_idx, view_collection);
+
+    // add the amount of seconds to the timer
+    if (timer)
+        elapsed += timer.seconds();
 }
