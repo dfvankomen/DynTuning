@@ -1,6 +1,6 @@
 #pragma once
-
 #include "Kokkos_Core.hpp"
+#include "common.hpp"
 
 using HostExecutionSpace   = Kokkos::KOKKOS_HOST;
 using DeviceExecutionSpace = Kokkos::KOKKOS_DEVICE;
