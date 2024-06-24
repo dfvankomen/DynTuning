@@ -9,7 +9,7 @@
 #include "common.hpp"
 #include "data.hpp"
 #include "kernel_mvm.hpp"
-#include "kernel_vvv.hpp"
+#include "kernel_vectordot.hpp"
 
 /*
 #define init_data_views(...) \
@@ -161,16 +161,22 @@ int main(int argc, char* argv[])
 
         // define all kernels
         printf("\nbuilding kernels\n");
-        auto k1 =
-          KernelVVV(options, std::as_const(q_views), std::as_const(r_views), s_views); // VVV
+        auto k1 = KernelVectorDot(options,
+                                  std::as_const(q_views),
+                                  std::as_const(r_views),
+                                  s_views); // VectorDot
         auto k2 =
           KernelMVM(options, std::as_const(t_views), std::as_const(r_views), x_views); // mvm
-        auto k3 =
-          KernelVVV(options, std::as_const(v_views), std::as_const(u_views), w_views); // VVV
-        // auto k5 = KernelVVV(options, std::as_const(v_views), std::as_const(u_views), w_views); //
-        // VVV
-        auto k4 =
-          KernelVVV(options, std::as_const(s_views), std::as_const(y_views), z_views); // VVV
+        auto k3 = KernelVectorDot(options,
+                                  std::as_const(v_views),
+                                  std::as_const(u_views),
+                                  w_views); // VectorDot
+        // auto k5 = KernelVectorDot(options, std::as_const(v_views), std::as_const(u_views),
+        // w_views); // VectorDot
+        auto k4 = KernelVectorDot(options,
+                                  std::as_const(s_views),
+                                  std::as_const(y_views),
+                                  z_views); // VectorDot
 
         // register all kernels info an Algorithm
         auto kernels = pack(k1, k2, k3, k4);
@@ -243,10 +249,10 @@ int main(int argc, char* argv[])
         algo.print_results();
 
         // TESTS
-        // TestVVV(k1, q, r, s);
+        // TestVectorDot(k1, q, r, s);
         // TestMVM(k2, t, s, u);
-        // TestVVV(k3, v, u, w);
-        // TestVVV(k4, x, y, z);
+        // TestVectorDot(k3, v, u, w);
+        // TestVectorDot(k4, x, y, z);
 
     } // end Kokkos scope
     Kokkos::finalize();

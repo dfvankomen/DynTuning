@@ -5,7 +5,7 @@
 #include "kernel.hpp"
 #include "range.hpp"
 
-struct FunctorVVV_Host
+struct FunctorVectorDot_Host
 {
     template<typename ViewsTuple, typename Index>
     KOKKOS_FUNCTION void operator()(ViewsTuple views, const Index i) const
@@ -17,7 +17,7 @@ struct FunctorVVV_Host
     }
 };
 
-struct FunctorVVV_Device
+struct FunctorVectorDot_Device
 {
     template<typename ViewsTuple, typename Index>
     KOKKOS_FUNCTION void operator()(ViewsTuple views, const Index i) const
@@ -46,7 +46,7 @@ inline auto to_const_ref(T& arg, bool flag, int i, int j)
 #define get_v(i, j, tuple) std::get<j>(std::get<i>(tuple))
 
 template<typename... ParameterTypes>
-inline auto KernelVVV(KernelOptions& options, ParameterTypes&... data_views)
+inline auto KernelVectorDot(KernelOptions& options, ParameterTypes&... data_views)
 {
     auto name = "vector-vector multiply";
 
@@ -68,17 +68,16 @@ inline auto KernelVVV(KernelOptions& options, ParameterTypes&... data_views)
     auto extent = range_extent(0, out.extent(0));
 
     // create the kernel
-    return Kernel<1, FunctorVVV_Host, FunctorVVV_Device, decltype(views), decltype(is_const)>(
-      name,
-      views,
-      is_const,
-      extent,
-      options);
+    return Kernel<1,
+                  FunctorVectorDot_Host,
+                  FunctorVectorDot_Device,
+                  decltype(views),
+                  decltype(is_const)>(name, views, is_const, extent, options);
 }
 
 /*
 template<typename KernelType>
-inline void TestVVV(KernelType& k, std::vector<double>& a, std::vector<double>& b,
+inline void TestVectorDot(KernelType& k, std::vector<double>& a, std::vector<double>& b,
 std::vector<double>& c)
 {
     std::vector<DeviceSelector> devices = k.options_.devices;

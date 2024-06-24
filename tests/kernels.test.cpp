@@ -4,7 +4,7 @@
 #include "data.hpp"
 #include "data_transfers.hpp"
 #include "kernel_mvm.hpp"
-#include "kernel_vvv.hpp"
+#include "kernel_vectordot.hpp"
 #include "view.hpp"
 
 #include <catch2/catch_test_macros.hpp>
@@ -17,7 +17,7 @@ typedef Kokkos::RangePolicy<DeviceExecSpace> device_range_policy;
 typedef Kokkos::MDRangePolicy<DeviceExecSpace, Kokkos::Rank<2>> device_rank2_range_policy;
 
 
-TEST_CASE("Kernel: Verify VVV Host and Device", "kernel")
+TEST_CASE("Kernel: Verify VectorDot Host and Device", "kernel")
 {
     const size_t N = 100;
 
@@ -54,7 +54,7 @@ TEST_CASE("Kernel: Verify VVV Host and Device", "kernel")
         KernelOptions options = { { DeviceSelector::HOST, DeviceSelector::DEVICE } };
 
         // build the kernel
-        auto k = KernelVVV(options, std::as_const(a_views), std::as_const(b_views), c_views);
+        auto k = KernelVectorDot(options, std::as_const(a_views), std::as_const(b_views), c_views);
 
         // then run the kernel, starting on the host
         k(DeviceSelector::HOST);
