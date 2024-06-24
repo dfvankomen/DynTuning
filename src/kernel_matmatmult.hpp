@@ -8,7 +8,7 @@
 
 // just the traditional implementation, NOT FAST
 
-struct FunctorMMM_Host
+struct FunctorMatMatMult_Host
 {
     template<typename ViewsTuple, typename Index>
     KOKKOS_FUNCTION void operator()(ViewsTuple views, const Index i, const Index j) const
@@ -29,7 +29,7 @@ struct FunctorMMM_Host
     }
 };
 
-struct FunctorMMM_Device
+struct FunctorMatMatMult_Device
 {
     tempate<typename ViewsTuple, typename Index> KOKKOS_FUNCTION void
     operator()(ViewsTuple views, const Index i, const Index j) const
@@ -52,7 +52,7 @@ struct FunctorMMM_Device
 
 
 template<typename... ParameterTypes>
-inline auto KernelMMM(KernelOptions& options, ParameterTypes&... data_views)
+inline auto KernelMatMatMult(KernelOptions& options, ParameterTypes&... data_views)
 {
     auto name = "matrix-matrix multiply";
 
@@ -76,10 +76,9 @@ inline auto KernelMMM(KernelOptions& options, ParameterTypes&... data_views)
 
     auto extent = range_extent({ 0, 0 }, { N, M });
 
-    return Kernel<2, FunctorMMM_Host, FunctorMMM_Device, decltype(views), decltype(is_const)>(
-      name,
-      views,
-      is_const,
-      extent,
-      options);
+    return Kernel<2,
+                  FunctorMatMatMult_Host,
+                  FunctorMatMatMult_Device,
+                  decltype(views),
+                  decltype(is_const)>(name, views, is_const, extent, options);
 }
