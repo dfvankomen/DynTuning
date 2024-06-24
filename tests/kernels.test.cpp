@@ -99,7 +99,6 @@ TEST_CASE("Kernel: Verify VectorDot Host and Device", "kernel")
 
 
 // TODO: reenable this test once parallel reduction is available!
-#if 0
 TEST_CASE("Kernel: Verify MatVecMult Host and Device", "kernel")
 {
     const size_t N = 3;
@@ -176,23 +175,13 @@ TEST_CASE("Kernel: Verify MatVecMult Host and Device", "kernel")
         for (size_t i_view = 0; i_view < 3; i_view++)
             transfer_data_device_to_host(i_view, k.data_views_);
 
-
-        std::cout << "C truth: " << std::endl;
-        for (size_t i = 0; i < N; i++)
-            std::cout << c_truth[i] << " ";
-        std::cout << std::endl;
-
-        std::cout << "C host: " << std::endl;
-        print_view(c_host);
-
         // then verify c as an output
         // TODO: this is going to fail because of a lack of parallel reductions!
         // this need to be reenabled once that has been solved!
         // for (size_t i = 0; i < N; i++)
-        //     REQUIRE_THAT(c_host(i), Catch::Matchers::WithinRel(c_truth[i], 1.e-10));
+        //     REQUIRE_THAT(c_host(i), !Catch::Matchers::WithinRel(c_truth[i], 1.e-10));
 
         // done!
     }
     Kokkos::finalize();
 }
-#endif
