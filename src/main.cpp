@@ -8,7 +8,7 @@
 #include "algorithm.hpp"
 #include "common.hpp"
 #include "data.hpp"
-#include "kernel_mvm.hpp"
+#include "kernel_matvecmult.hpp"
 #include "kernel_vectordot.hpp"
 
 /*
@@ -165,8 +165,10 @@ int main(int argc, char* argv[])
                                   std::as_const(q_views),
                                   std::as_const(r_views),
                                   s_views); // VectorDot
-        auto k2 =
-          KernelMVM(options, std::as_const(t_views), std::as_const(r_views), x_views); // mvm
+        auto k2 = KernelMatVecMult(options,
+                                   std::as_const(t_views),
+                                   std::as_const(r_views),
+                                   x_views); // matvecmult
         auto k3 = KernelVectorDot(options,
                                   std::as_const(v_views),
                                   std::as_const(u_views),
@@ -250,7 +252,7 @@ int main(int argc, char* argv[])
 
         // TESTS
         // TestVectorDot(k1, q, r, s);
-        // TestMVM(k2, t, s, u);
+        // TestMatVecMult(k2, t, s, u);
         // TestVectorDot(k3, v, u, w);
         // TestVectorDot(k4, x, y, z);
 

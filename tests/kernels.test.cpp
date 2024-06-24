@@ -3,7 +3,7 @@
 #include "common.hpp"
 #include "data.hpp"
 #include "data_transfers.hpp"
-#include "kernel_mvm.hpp"
+#include "kernel_matvecmult.hpp"
 #include "kernel_vectordot.hpp"
 #include "view.hpp"
 
@@ -100,7 +100,7 @@ TEST_CASE("Kernel: Verify VectorDot Host and Device", "kernel")
 
 // TODO: reenable this test once parallel reduction is available!
 #if 0
-TEST_CASE("Kernel: Verify MVM Host and Device", "kernel")
+TEST_CASE("Kernel: Verify MatVecMult Host and Device", "kernel")
 {
     const size_t N = 3;
 
@@ -146,7 +146,7 @@ TEST_CASE("Kernel: Verify MVM Host and Device", "kernel")
         KernelOptions options = { { DeviceSelector::HOST, DeviceSelector::DEVICE } };
 
         // build the kernel
-        auto k = KernelMVM(options, std::as_const(A_views), std::as_const(b_views), c_views);
+        auto k = KernelMatVecMult(options, std::as_const(A_views), std::as_const(b_views), c_views);
 
         // then run the kernel, starting on the host
         k(DeviceSelector::HOST);

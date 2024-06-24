@@ -10,7 +10,7 @@
 
 // TODO: this kernel requires parallel reduce!
 
-struct FunctorMVM_Host
+struct FunctorMatVecMult_Host
 {
     template<typename ViewsTuple, typename Index>
     KOKKOS_FUNCTION void operator()(ViewsTuple views, const Index i, const Index j) const
@@ -27,7 +27,7 @@ struct FunctorMVM_Host
     }
 };
 
-struct FunctorMVM_Device
+struct FunctorMatVecMult_Device
 {
     template<typename ViewsTuple, typename Index>
     KOKKOS_FUNCTION void operator()(ViewsTuple views, const Index i, const Index j) const
@@ -48,7 +48,7 @@ struct FunctorMVM_Device
 #define get_v(i, j, tuple) std::get<j>(std::get<i>(tuple))
 
 template<typename... ParameterTypes>
-inline auto KernelMVM(KernelOptions& options, ParameterTypes&... data_views)
+inline auto KernelMatVecMult(KernelOptions& options, ParameterTypes&... data_views)
 {
     auto name = "matrix-vector multiply";
 
@@ -70,18 +70,17 @@ inline auto KernelMVM(KernelOptions& options, ParameterTypes&... data_views)
     unsigned long N = out.extent(0);
     unsigned long M = out.extent(1);
     auto extent     = range_extent({ 0, 0 }, { N, M });
-    return Kernel<2, FunctorMVM_Host, FunctorMVM_Device, decltype(views), decltype(is_const)>(
-      name,
-      views,
-      is_const,
-      extent,
-      options);
+    return Kernel<2,
+                  FunctorMatVecMult_Host,
+                  FunctorMatVecMult_Device,
+                  decltype(views),
+                  decltype(is_const)>(name, views, is_const, extent, options);
 }
 
 /*
 template<typename KernelType>
-inline void TestMVM(KernelType& k, Eigen::MatrixXd& a, std::vector<double>& b, std::vector<double>&
-c)
+inline void TestMatVecMult(KernelType& k, Eigen::MatrixXd& a, std::vector<double>& b,
+std::vector<double>& c)
 {
 
     std::vector<DeviceSelector> devices = k.options_.devices;
