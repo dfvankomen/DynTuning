@@ -9,7 +9,7 @@
 #include "common.hpp"
 #include "data.hpp"
 #include "kernel_mvm.hpp"
-#include "kernel_vvm.hpp"
+#include "kernel_vvv.hpp"
 
 /*
 #define init_data_views(...) \
@@ -162,20 +162,20 @@ int main(int argc, char* argv[])
         // define all kernels
         printf("\nbuilding kernels\n");
         auto k1 =
-          KernelVVM(options, std::as_const(q_views), std::as_const(r_views), s_views); // vvm
+          KernelVVV(options, std::as_const(q_views), std::as_const(r_views), s_views); // VVV
         auto k2 =
           KernelMVM(options, std::as_const(t_views), std::as_const(r_views), x_views); // mvm
         auto k3 =
-          KernelVVM(options, std::as_const(v_views), std::as_const(u_views), w_views); // vvm
-        // auto k5 = KernelVVM(options, std::as_const(v_views), std::as_const(u_views), w_views); //
-        // vvm
+          KernelVVV(options, std::as_const(v_views), std::as_const(u_views), w_views); // VVV
+        // auto k5 = KernelVVV(options, std::as_const(v_views), std::as_const(u_views), w_views); //
+        // VVV
         auto k4 =
-          KernelVVM(options, std::as_const(s_views), std::as_const(y_views), z_views); // vvm
+          KernelVVV(options, std::as_const(s_views), std::as_const(y_views), z_views); // VVV
 
         // register all kernels info an Algorithm
-        // auto kernels = pack(k1, k2, k3, k4);
+        auto kernels = pack(k1, k2, k3, k4);
         printf("\nbuilding algorithm\n");
-        auto kernels = pack(k1, k3, k4);
+        // auto kernels = pack(k1, k3, k4);
         // auto kernels = pack(k2);
         Algorithm algo(kernels, data_views, reordering);
         algo.set_num_chain_runs(num_chain_runs);
@@ -243,10 +243,10 @@ int main(int argc, char* argv[])
         algo.print_results();
 
         // TESTS
-        // TestVVM(k1, q, r, s);
+        // TestVVV(k1, q, r, s);
         // TestMVM(k2, t, s, u);
-        // TestVVM(k3, v, u, w);
-        // TestVVM(k4, x, y, z);
+        // TestVVV(k3, v, u, w);
+        // TestVVV(k4, x, y, z);
 
     } // end Kokkos scope
     Kokkos::finalize();
