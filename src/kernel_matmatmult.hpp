@@ -76,8 +76,6 @@ inline auto KernelMatMatMult(KernelOptions& options, ParameterTypes&... data_vie
     unsigned long N = out.extent(0);
     unsigned long M = out.extent(1);
 
-    std::cout << "N and M are " << N << " " << M << std::endl;
-
     auto extent = range_extent({ 0, 0 }, { N, M });
 
     return Kernel<2,
