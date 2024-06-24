@@ -31,8 +31,8 @@ struct FunctorMatMatMult_Host
 
 struct FunctorMatMatMult_Device
 {
-    tempate<typename ViewsTuple, typename Index> KOKKOS_FUNCTION void
-    operator()(ViewsTuple views, const Index i, const Index j) const
+    template<typename ViewsTuple, typename Index>
+    KOKKOS_FUNCTION void operator()(ViewsTuple views, const Index i, const Index j) const
     {
         // maybe just straight up CuBLAS?
         auto A = std::get<0>(views);
@@ -50,6 +50,7 @@ struct FunctorMatMatMult_Device
     }
 };
 
+#define get_v(i, j, tuple) std::get<j>(std::get<i>(tuple))
 
 template<typename... ParameterTypes>
 inline auto KernelMatMatMult(KernelOptions& options, ParameterTypes&... data_views)
@@ -65,14 +66,17 @@ inline auto KernelMatMatMult(KernelOptions& options, ParameterTypes&... data_vie
       std::make_tuple(get_v(0, 0, views_), get_v(1, 0, views_), get_v(2, 0, views_)),
       std::make_tuple(get_v(0, 1, views_), get_v(1, 1, views_), get_v(2, 1, views_)),
       std::make_tuple(get_v(0, 2, views_), get_v(1, 2, views_), get_v(2, 2, views_)));
+    // first dim you pull out is host/scratch/device, second is variable
 
     // get the extent based on the host view of the matrix
-    auto out = std::get<0>(std::get<0>(views));
+    auto out = std::get<2>(std::get<0>(views));
 
     // we'll assume that the user has properly set up the right matrix sizes, so the iterations are
     // only in the out to store
     unsigned long N = out.extent(0);
     unsigned long M = out.extent(1);
+
+    std::cout << "N and M are " << N << " " << M << std::endl;
 
     auto extent = range_extent({ 0, 0 }, { N, M });
 

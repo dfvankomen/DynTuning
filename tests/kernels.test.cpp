@@ -3,6 +3,7 @@
 #include "common.hpp"
 #include "data.hpp"
 #include "data_transfers.hpp"
+#include "kernel_matmatmult.hpp"
 #include "kernel_matvecmult.hpp"
 #include "kernel_vectordot.hpp"
 #include "view.hpp"
@@ -101,7 +102,7 @@ TEST_CASE("Kernel: Verify VectorDot Host and Device", "kernel")
 // TODO: reenable this test once parallel reduction is available!
 TEST_CASE("Kernel: Verify MatVecMult Host and Device", "kernel")
 {
-    const size_t N = 3;
+    const size_t N = 5;
 
     Kokkos::initialize();
     {
@@ -139,8 +140,6 @@ TEST_CASE("Kernel: Verify MatVecMult Host and Device", "kernel")
         // used for the checks after we finish
         auto& A_host = std::get<0>(A_views);
         auto& c_host = std::get<0>(c_views);
-
-        print_view(A_host);
 
         KernelOptions options = { { DeviceSelector::HOST, DeviceSelector::DEVICE } };
 
@@ -180,6 +179,197 @@ TEST_CASE("Kernel: Verify MatVecMult Host and Device", "kernel")
         // this need to be reenabled once that has been solved!
         // for (size_t i = 0; i < N; i++)
         //     REQUIRE_THAT(c_host(i), !Catch::Matchers::WithinRel(c_truth[i], 1.e-10));
+
+        // done!
+    }
+    Kokkos::finalize();
+}
+
+TEST_CASE("Kernel: Verify Square MatMatMult Host and Device", "kernel")
+{
+    const size_t N = 10;
+
+    Kokkos::initialize();
+    {
+        DynMatrix2D A(N, N);
+        DynMatrix2D B(N, N);
+        DynMatrix2D C(N, N);
+        DynMatrix2D C_truth(N, N);
+
+        // initialize the A and B matrices!
+        int ij = 0;
+        for (size_t i = 0; i < N; i++)
+            for (size_t j = 0; j < N; j++)
+            {
+                A(i, j) = static_cast<double>(ij++);
+                B(i, j) = static_cast<double>(ij++);
+            }
+
+
+        // calculate the truth
+        for (size_t i = 0; i < N; i++)
+            for (size_t j = 0; j < N; j++)
+            {
+                double sum = 0.0;
+                for (size_t k = 0; k < N; k++)
+                    sum += A(i, k) * B(k, j);
+                C_truth(i, j) = sum;
+            }
+
+
+        constexpr auto data_names = std::make_tuple(HashedName<hash("A")>(),
+                                                    HashedName<hash("B")>(),
+                                                    HashedName<hash("C")>());
+
+        auto data_views = create_views(pack(A, B, C));
+
+        auto& A_views = std::get<find<hash("A")>(data_names)>(data_views);
+        auto& B_views = std::get<find<hash("B")>(data_names)>(data_views);
+        auto& C_views = std::get<find<hash("C")>(data_names)>(data_views);
+
+        // used for the checks after we finish
+        auto& A_host = std::get<0>(A_views);
+        auto& B_host = std::get<0>(B_views);
+        auto& C_host = std::get<0>(C_views);
+
+
+        KernelOptions options = { { DeviceSelector::HOST, DeviceSelector::DEVICE } };
+
+        // build the kernel
+        auto k = KernelMatMatMult(options, std::as_const(A_views), std::as_const(B_views), C_views);
+
+        // then run the kernel, starting on the host
+        k(DeviceSelector::HOST);
+
+        // then verify c as an output
+        for (size_t i = 0; i < N; i++)
+            for (size_t j = 0; j < N; j++)
+                REQUIRE_THAT(C_host(i, j), Catch::Matchers::WithinRel(C_truth(i, j), 1.e-10));
+
+        // TODO: only call this if CUDA is enabled, probably
+
+        // clear the c_host back to 0's
+        for (size_t i = 0; i < N; i++)
+            for (size_t j = 0; j < N; j++)
+                C(i, j) = 0.0;
+
+        // verify that c_host is 0's (to be safe)
+        for (size_t i = 0; i < N; i++)
+            for (size_t j = 0; j < N; j++)
+                REQUIRE_THAT(C_host(i, j), Catch::Matchers::WithinULP(0.0, 0));
+
+        // then do the data transfer to device
+        for (size_t i_view = 0; i_view < 3; i_view++)
+            transfer_data_host_to_device(i_view, k.data_views_);
+
+        // then run it on device
+        k(DeviceSelector::DEVICE);
+
+        // then move it back to host for testing
+        for (size_t i_view = 0; i_view < 3; i_view++)
+            transfer_data_device_to_host(i_view, k.data_views_);
+
+        // then verify c as an output
+        for (size_t i = 0; i < N; i++)
+            for (size_t j = 0; j < N; j++)
+                REQUIRE_THAT(C_host(i, j), Catch::Matchers::WithinRel(C_truth(i, j), 1.e-10));
+
+        // done!
+    }
+    Kokkos::finalize();
+}
+
+
+TEST_CASE("Kernel: Verify Non-Square MatMatMult Host and Device", "kernel")
+{
+    const size_t N = 3;
+    const size_t M = 4;
+    const size_t O = 5;
+
+    Kokkos::initialize();
+    {
+        DynMatrix2D A(N, M);
+        DynMatrix2D B(M, O);
+        DynMatrix2D C(N, O);
+        DynMatrix2D C_truth(N, O);
+
+        // initialize the A and B matrices!
+        int ij = 0;
+        for (size_t i = 0; i < N; i++)
+            for (size_t j = 0; j < M; j++)
+                A(i, j) = static_cast<double>(ij++);
+
+        ij = -100;
+        for (size_t i = 0; i < M; i++)
+            for (size_t j = 0; j < O; j++)
+                B(i, j) = static_cast<double>(ij++);
+
+        // calculate the truth
+        for (size_t i = 0; i < N; i++)
+            for (size_t j = 0; j < O; j++)
+            {
+                double sum = 0.0;
+                for (size_t k = 0; k < M; k++)
+                    sum += A(i, k) * B(k, j);
+                C_truth(i, j) = sum;
+            }
+
+        constexpr auto data_names = std::make_tuple(HashedName<hash("A")>(),
+                                                    HashedName<hash("B")>(),
+                                                    HashedName<hash("C")>());
+
+        auto data_views = create_views(pack(A, B, C));
+
+        auto& A_views = std::get<find<hash("A")>(data_names)>(data_views);
+        auto& B_views = std::get<find<hash("B")>(data_names)>(data_views);
+        auto& C_views = std::get<find<hash("C")>(data_names)>(data_views);
+
+        // used for the checks after we finish
+        auto& A_host = std::get<0>(A_views);
+        auto& B_host = std::get<0>(B_views);
+        auto& C_host = std::get<0>(C_views);
+
+
+        KernelOptions options = { { DeviceSelector::HOST, DeviceSelector::DEVICE } };
+
+        // build the kernel
+        auto k = KernelMatMatMult(options, std::as_const(A_views), std::as_const(B_views), C_views);
+
+        // then run the kernel, starting on the host
+        k(DeviceSelector::HOST);
+
+        // then verify c as an output
+        for (size_t i = 0; i < N; i++)
+            for (size_t j = 0; j < O; j++)
+                REQUIRE_THAT(C_host(i, j), Catch::Matchers::WithinRel(C_truth(i, j), 1.e-10));
+
+        // TODO: only call this if CUDA is enabled, probably
+
+        // clear the c_host back to 0's
+        for (size_t i = 0; i < N; i++)
+            for (size_t j = 0; j < O; j++)
+                C(i, j) = 0.0;
+
+        // verify that c_host is 0's (to be safe)
+        for (size_t i = 0; i < N; i++)
+            for (size_t j = 0; j < O; j++)
+                REQUIRE_THAT(C_host(i, j), Catch::Matchers::WithinULP(0.0, 0));
+
+        // then do the data transfer to device
+        for (size_t i_view = 0; i_view < 3; i_view++)
+            transfer_data_host_to_device(i_view, k.data_views_);
+
+        // then run it on device
+        k(DeviceSelector::DEVICE);
+
+        // then move it back to host for testing
+        for (size_t i_view = 0; i_view < 3; i_view++)
+            transfer_data_device_to_host(i_view, k.data_views_);
+
+        // then verify c as an output
+        for (size_t i = 0; i < N; i++)
+            for (size_t j = 0; j < O; j++)
+                REQUIRE_THAT(C_host(i, j), Catch::Matchers::WithinRel(C_truth(i, j), 1.e-10));
 
         // done!
     }
