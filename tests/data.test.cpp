@@ -3,14 +3,11 @@
 #include "Kokkos_Core.hpp"
 #include "common.hpp"
 #include "data_transfers.hpp"
-#include "kernel_mvm.hpp"
-#include "kernel_vvv.hpp"
 #include "view.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <cstddef>
-#include <utility>
 
 typedef Kokkos::Cuda DeviceExecSpace;
 typedef Kokkos::RangePolicy<DeviceExecSpace> device_range_policy;
