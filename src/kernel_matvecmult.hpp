@@ -19,7 +19,10 @@ struct FunctorMatVecMult_Host
         auto A = std::get<0>(views);
         auto x = std::get<1>(views);
         auto b = std::get<2>(views);
-        b(i) += A(i, j) * x(j);
+
+        Kokkos::atomic_add(&b(i), A(i, j) * x(j));
+
+        // b(i) += A(i, j) * x(j);
 
         // need to return b(i) instead of trying to update automatically!
 
@@ -37,7 +40,11 @@ struct FunctorMatVecMult_Device
         auto A = std::get<0>(views);
         auto x = std::get<1>(views);
         auto b = std::get<2>(views);
-        b(i) += A(i, j) * x(j);
+
+        // for the CPUj side, is atomic add necessary?
+        // my gut says no, but that depends on the backend that's working
+        Kokkos::atomic_add(&b(i), A(i, j) * x(j));
+        // b(i) += A(i, j) * x(j);
 
         // need to return b(i) instead of trying to update automatically!
 

@@ -103,7 +103,7 @@ TEST_CASE("Kernel: Verify VectorDot Host and Device", "kernel")
 // TODO: reenable this test once parallel reduction is available!
 TEST_CASE("Kernel: Verify MatVecMult Host and Device", "kernel")
 {
-    const size_t N = 5;
+    const size_t N = 10;
 
     Kokkos::initialize();
     {
@@ -178,13 +178,99 @@ TEST_CASE("Kernel: Verify MatVecMult Host and Device", "kernel")
         // then verify c as an output
         // TODO: this is going to fail because of a lack of parallel reductions!
         // this need to be reenabled once that has been solved!
-        // for (size_t i = 0; i < N; i++)
-        //     REQUIRE_THAT(c_host(i), !Catch::Matchers::WithinRel(c_truth[i], 1.e-10));
+        for (size_t i = 0; i < N; i++)
+            REQUIRE_THAT(c_host(i), Catch::Matchers::WithinRel(c_truth[i], 1.e-10));
 
         // done!
     }
     Kokkos::finalize();
 }
+
+TEST_CASE("Kernel: Verify MatVecMult Non-Square Host and Device", "kernel")
+{
+    const size_t N = 10;
+    const size_t M = 15;
+
+    Kokkos::initialize();
+    {
+        DynMatrix2D A(N, M);
+        std::vector<double> b(M);
+        std::vector<double> c(M);
+        std::vector<double> c_truth(M, 0.0);
+
+        // initialize the A matrix
+        int ij = 0;
+        for (size_t i = 0; i < N; i++)
+            for (size_t j = 0; j < M; j++)
+                A(i, j) = static_cast<double>(ij++);
+
+        // b can just be all 10's
+        for (size_t i = 0; i < M; i++)
+            b[i] = 10.0;
+
+        // calculate the truth
+        for (size_t i = 0; i < N; i++)
+            for (size_t j = 0; j < M; j++)
+                c_truth[i] += A(i, j) * b[j];
+
+        constexpr auto data_names = std::make_tuple(HashedName<hash("A")>(),
+                                                    HashedName<hash("b")>(),
+                                                    HashedName<hash("c")>());
+
+        auto data_views = create_views(pack(A, b, c));
+
+        auto& A_views = std::get<find<hash("A")>(data_names)>(data_views);
+        auto& b_views = std::get<find<hash("b")>(data_names)>(data_views);
+        auto& c_views = std::get<find<hash("c")>(data_names)>(data_views);
+
+        // used for the checks after we finish
+        auto& A_host = std::get<0>(A_views);
+        auto& c_host = std::get<0>(c_views);
+
+        KernelOptions options = { { DeviceSelector::HOST, DeviceSelector::DEVICE } };
+
+        // build the kernel
+        auto k = KernelMatVecMult(options, std::as_const(A_views), std::as_const(b_views), c_views);
+
+        // then run the kernel, starting on the host
+        k(DeviceSelector::HOST);
+
+        // then verify c as an output
+        for (size_t i = 0; i < M; i++)
+            REQUIRE_THAT(c_host(i), Catch::Matchers::WithinRel(c_truth[i], 1.e-10));
+
+        // TODO: only call this if CUDA is enabled, probably
+
+        // clear the c_host back to 0's
+        for (size_t i = 0; i < M; i++)
+            c[i] = 0.0;
+
+        // verify that c_host is 0's (to be safe)
+        for (size_t i = 0; i < M; i++)
+            REQUIRE_THAT(c_host(i), Catch::Matchers::WithinULP(0.0, 0));
+
+        // then do the data transfer to device
+        for (size_t i_view = 0; i_view < 3; i_view++)
+            transfer_data_host_to_device(i_view, k.data_views_);
+
+        // then run it on device
+        k(DeviceSelector::DEVICE);
+
+        // then move it back to host for testing
+        for (size_t i_view = 0; i_view < 3; i_view++)
+            transfer_data_device_to_host(i_view, k.data_views_);
+
+        // then verify c as an output
+        // TODO: this is going to fail because of a lack of parallel reductions!
+        // this need to be reenabled once that has been solved!
+        for (size_t i = 0; i < M; i++)
+            REQUIRE_THAT(c_host(i), Catch::Matchers::WithinRel(c_truth[i], 1.e-10));
+
+        // done!
+    }
+    Kokkos::finalize();
+}
+
 
 TEST_CASE("Kernel: Verify Square VectorOuter Host and Device", "kernel")
 {
