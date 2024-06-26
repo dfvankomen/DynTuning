@@ -1,9 +1,9 @@
 #pragma once
 
+#include "Kokkos_Core.hpp"
 #include "common.hpp"
 #include "range.hpp"
 #include "view.hpp"
-#include "Kokkos_Core.hpp"
 
 struct KernelOptions
 {
@@ -14,8 +14,12 @@ struct KernelOptions
 // Kernel
 //=============================================================================
 
-//template<int KernelRank, class FunctorType, typename... ParameterTypes>
-template<int KernelRank, class HostFunctorType, class DeviceFunctorType, typename DataViewsType, typename IsConstTupleType>
+// template<int KernelRank, class FunctorType, typename... ParameterTypes>
+template<int KernelRank,
+         class HostFunctorType,
+         class DeviceFunctorType,
+         typename DataViewsType,
+         typename IsConstTupleType>
 class Kernel
 {
   public:
@@ -27,7 +31,7 @@ class Kernel
     using BoundType            = RangeExtent<KernelRank>::value_type;
     using HostRangePolicy      = typename RangePolicy<KernelRank, HostExecutionSpace>::type;
     using DeviceRangePolicy    = typename RangePolicy<KernelRank, DeviceExecutionSpace>::type;
-    
+
     Kernel(const char* name,
            DataViewsType views,
            IsConstTupleType is_const,
@@ -84,26 +88,19 @@ class Kernel
 
 template<int KernelRank, typename ViewsType, typename RangePolicyType, typename FunctorType>
 inline void call_kernel(const std::string& name,
-                 const RangePolicyType& range_policy,
-                 ViewsType& views,
-                 const FunctorType functor)
+                        const RangePolicyType& range_policy,
+                        ViewsType& views,
+                        const FunctorType functor)
 {
     if constexpr (KernelRank == 1)
     {
-        Kokkos::parallel_for(
-            name,
-            range_policy,
-            KOKKOS_LAMBDA(int i) { functor(views, i); }
-        );
+        Kokkos::parallel_for(name, range_policy, KOKKOS_LAMBDA(int i) { functor(views, i); });
     }
     else if constexpr (KernelRank == 2)
     {
-        Kokkos::parallel_for(
-            name,
-            range_policy,
-            KOKKOS_LAMBDA(int i, int j) { functor(views, i, j); }
-        );
-
+        Kokkos::parallel_for(name, range_policy, KOKKOS_LAMBDA(int i, int j) {
+            functor(views, i, j);
+        });
     }
 }
 
@@ -129,5 +126,6 @@ inline void call_kernel(KernelType& k, DeviceSelector device_selector)
 template<typename... T>
 inline auto kernel_io_map(T&... args)
 {
-    return std::make_tuple(static_cast<bool>(std::is_const_v<std::remove_reference_t<decltype(args)>>)...);
+    return std::make_tuple(
+      static_cast<bool>(std::is_const_v<std::remove_reference_t<decltype(args)>>)...);
 }
