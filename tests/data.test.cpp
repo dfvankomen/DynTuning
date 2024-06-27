@@ -1,8 +1,10 @@
 #include "data.hpp"
 
 #include "Kokkos_Core.hpp"
+#include "Kokkos_Random.hpp"
 #include "common.hpp"
 #include "data_transfers.hpp"
+#include "range.hpp"
 #include "view.hpp"
 
 #include <catch2/catch_test_macros.hpp>
@@ -462,6 +464,84 @@ TEST_CASE("Test Multiple View Construction", "views")
         //     // after flopping the dimensions, the views should now be in order of [host_views,
         //     // device_views, scratch_views]
         // }
+    }
+    Kokkos::finalize();
+}
+
+// template<typename T>
+// std::string type_name();
+
+
+TEST_CASE("Test creating views with Kokkos View datatype", "views")
+{
+
+    // size of the input vector
+    const size_t N    = 10;
+    const size_t ncol = 5;
+    const size_t nrow = 10;
+
+    Kokkos::initialize();
+    {
+        NDArrayView<double*> a("a", N);
+        NDArrayView<double**> b("b", N, N);
+        NDArrayView<double***> c("c", N, N, N);
+
+        Kokkos::View<double**, Kokkos::KOKKOS_HOST> x("x", N, N);
+
+        // assert at compile time that a, b, and c are going to work
+        static_assert(IsKokkosView<decltype(a)>);
+        static_assert(IsKokkosView<decltype(b)>);
+        static_assert(IsKokkosView<decltype(c)>);
+
+        using HostRangePolicy1D = typename RangePolicy<1, HostExecutionSpace>::type;
+        using HostRangePolicy2D = typename RangePolicy<2, HostExecutionSpace>::type;
+        using HostRangePolicy3D = typename RangePolicy<3, HostExecutionSpace>::type;
+
+        Kokkos::parallel_for("Populate stuff", HostRangePolicy1D(0, N), KOKKOS_LAMBDA(const int i) {
+            a(i) = i + 1;
+        });
+        Kokkos::parallel_for(
+          "Populate stuff 2",
+          HostRangePolicy2D({ 0, 0 }, { N, N }),
+          KOKKOS_LAMBDA(const int i, const int j) { b(i, j) = (i + 1) * (j + 1); });
+        Kokkos::parallel_for("Populate stuff 3",
+                             HostRangePolicy3D({ 0, 0, 0 }, { N, N, N }),
+                             KOKKOS_LAMBDA(const int i, const int j, const int k) {
+                                 c(i, j, k) = (i + 1) * (j + 1) * (k + 1);
+                             });
+
+        Kokkos::Random_XorShift64_Pool<Kokkos::KOKKOS_HOST> rand_pool(0);
+        // Kokkos::fill_random(x, rand_pool, 100.0);
+
+        // actually create the views
+        auto data_views           = create_views(pack(a, b, c));
+        constexpr auto data_names = std::make_tuple(HashedName<hash("a")>(),
+                                                    HashedName<hash("b")>(),
+                                                    HashedName<hash("c")>());
+
+        auto& a_views = std::get<find<hash("a")>(data_names)>(data_views);
+        auto& b_views = std::get<find<hash("b")>(data_names)>(data_views);
+        auto& c_views = std::get<find<hash("c")>(data_names)>(data_views);
+        auto& a_host  = std::get<0>(a_views);
+        auto& b_host  = std::get<0>(b_views);
+        auto& c_host  = std::get<0>(c_views);
+
+        REQUIRE_THAT(a_host(0), Catch::Matchers::WithinULP(a(0), 0));
+        REQUIRE_THAT(a_host(1), Catch::Matchers::WithinULP(a(1), 0));
+        REQUIRE_THAT(a_host(2), Catch::Matchers::WithinULP(a(2), 0));
+        REQUIRE_THAT(a_host(3), Catch::Matchers::WithinULP(a(3), 0));
+
+        // tests for b
+        REQUIRE_THAT(b_host(0, 0), Catch::Matchers::WithinULP(b(0, 0), 0));
+        REQUIRE_THAT(b_host(0, 1), Catch::Matchers::WithinULP(b(0, 1), 0));
+        REQUIRE_THAT(b_host(0, 2), Catch::Matchers::WithinULP(b(0, 2), 0));
+        REQUIRE_THAT(b_host(0, 3), Catch::Matchers::WithinULP(b(0, 3), 0));
+
+        // tests for c
+        REQUIRE_THAT(c_host(0, 0, 0), Catch::Matchers::WithinULP(c(0, 0, 0), 0));
+        REQUIRE_THAT(c_host(0, 0, 1), Catch::Matchers::WithinULP(c(0, 0, 1), 0));
+        REQUIRE_THAT(c_host(0, 0, 2), Catch::Matchers::WithinULP(c(0, 0, 2), 0));
+        REQUIRE_THAT(c_host(0, 0, 3), Catch::Matchers::WithinULP(c(0, 0, 3), 0));
     }
     Kokkos::finalize();
 }

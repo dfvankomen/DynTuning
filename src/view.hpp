@@ -32,6 +32,11 @@ using HostViewGenerator    = Views<HostViewSpace, ViewMemoryType::NONOWNING>;
 using DeviceViewGenerator  = Views<DeviceViewSpace, ViewMemoryType::OWNING>;
 using ScratchViewGenerator = Views<ScratchViewSpace, ViewMemoryType::TMP>;
 
+// convenience defs for users
+template<typename T>
+using NDArrayView = Kokkos::View<T, Kokkos::HostSpace>;
+
+
 //=============================================================================
 // Specializations
 //=============================================================================
@@ -48,6 +53,9 @@ concept IsStdVector = is_specialization<std::decay_t<T>, std::vector>;
 
 template<typename T>
 concept IsEigenMatrix = std::is_base_of_v<Eigen::MatrixBase<std::decay_t<T>>, std::decay_t<T>>;
+
+template<typename T>
+concept IsKokkosView = is_specialization<std::decay_t<T>, Kokkos::View>;
 
 //=============================================================================
 // EquivalentView
@@ -89,6 +97,23 @@ struct EquivalentView<ExecutionSpace, MemoryLayout, T>
 
     // Type for the equivalent view of the data structure
     using type = Kokkos::View<value_type**, MemoryLayout, ExecutionSpace>;
+};
+
+
+template<typename ExecutionSpace, typename MemoryLayout, typename T>
+    requires IsKokkosView<T>
+struct EquivalentView<ExecutionSpace, MemoryLayout, T>
+{
+    // Type of the scalar in the data structure
+    // Note: this ignores constness on purpose to allow deep-copies of "inputs" to kernels
+
+    // Kokkos's `data_type` includes the *'s that are necessary to determine size
+    using value_type = typename T::data_type;
+
+    // Type for the equivalent view of the data structure
+    // Note that Kokkos views require the ** at the end, so we will just assume
+    // that the view is set up properly by the user
+    using type = Kokkos::View<value_type, MemoryLayout, ExecutionSpace>;
 };
 
 //=============================================================================
@@ -177,6 +202,106 @@ struct Views
                                                      typename ExecutionSpace::array_layout,
                                                      T>::type;
             return ViewType("", matrix.rows(), matrix.cols());
+        }
+    }
+
+    // Specialization for Eigen matrix
+    template<typename T>
+        requires IsKokkosView<T>
+    static auto create_view(T& view)
+    {
+        // host layout may not be ideal for device
+        if constexpr (MemoryType == ViewMemoryType::NONOWNING)
+        {
+            // NOTE: Eigen, by default uses "layoutleft" (meaning col-major order).
+            // this differs from the default view which is LayoutRight.
+            // originally the typename Kokkos::LayoutLeft was actually
+            // typename ExecutationSpace::array_layout
+            // TODO: a constexpr for if it's row major or not
+            using ViewType = typename EquivalentView<ExecutionSpace,
+                                                     typename ExecutionSpace::array_layout,
+                                                     T>::type;
+            //   typename EquivalentView<ExecutionSpace, typename Kokkos::LayoutLeft, T>::type;
+            if constexpr (T::rank < 5)
+            {
+                // this should return a shallow copy, but it ensures that things line up as expected
+                // for our deep copies later
+                return ViewType(view);
+            }
+            else
+            {
+                throw std::runtime_error("Cannot create a view with rank higher than 3");
+            }
+        }
+        // tmp space on host with same layout as the device
+        else if constexpr (MemoryType == ViewMemoryType::TMP)
+        {
+            // TODO: this is kind of dirty/hacky, as we should be passing the data in via
+            // ArrayLayoutType instead of ScratchViewLayout, but this gets it working properly for
+            // now
+            // using ViewType = typename EquivalentView<ExecutionSpace, ScratchViewLayout, T>::type;
+            // using ViewType = typename EquivalentView<ExecutionSpace, Kokkos::LayoutLeft,
+            // T>::type;
+
+            // TODO: we should also probably consider templating this out
+            if constexpr (T::rank == 1)
+            {
+                using ViewType =
+                  typename EquivalentView<ExecutionSpace, Kokkos::LayoutLeft, T>::type;
+                // for scratch, if rank is 1, we don't need scratch, so it'll be 0 sized
+                return ViewType("", 0);
+            }
+            else if constexpr (T::rank == 2)
+            {
+                using ViewType =
+                  typename EquivalentView<ExecutionSpace, ScratchViewLayout, T>::type;
+                return ViewType("",
+                                static_cast<size_t>(view.extent(0)),
+                                static_cast<size_t>(view.extent(1)));
+            }
+            else if constexpr (T::rank == 3)
+            {
+                using ViewType =
+                  typename EquivalentView<ExecutionSpace, ScratchViewLayout, T>::type;
+                return ViewType("",
+                                static_cast<size_t>(view.extent(0)),
+                                static_cast<size_t>(view.extent(1)),
+                                static_cast<size_t>(view.extent(2)));
+            }
+            else
+            {
+                throw std::runtime_error("Cannot create a view with rank higher than 3");
+            }
+        }
+        // device with ideal device layout
+        else if constexpr (MemoryType == ViewMemoryType::OWNING)
+        {
+            // TODO: should this be using our template type?
+            using ViewType = typename EquivalentView<ExecutionSpace,
+                                                     typename ExecutionSpace::array_layout,
+                                                     T>::type;
+
+            if constexpr (T::rank == 1)
+            {
+                return ViewType("", static_cast<size_t>(view.extent(0)));
+            }
+            else if constexpr (T::rank == 2)
+            {
+                return ViewType("",
+                                static_cast<size_t>(view.extent(0)),
+                                static_cast<size_t>(view.extent(1)));
+            }
+            else if constexpr (T::rank == 3)
+            {
+                return ViewType("",
+                                static_cast<size_t>(view.extent(0)),
+                                static_cast<size_t>(view.extent(1)),
+                                static_cast<size_t>(view.extent(2)));
+            }
+            else
+            {
+                throw std::runtime_error("Cannot create a view with rank higher than 3");
+            }
         }
     }
 
