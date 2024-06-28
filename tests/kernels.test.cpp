@@ -1,10 +1,10 @@
-
 #include "Kokkos_Core.hpp"
 #include "common.hpp"
 #include "data.hpp"
 #include "data_transfers.hpp"
 #include "kernel_matmatmult.hpp"
 #include "kernel_matvecmult.hpp"
+#include "kernel_testr0.hpp"
 #include "kernel_vectordot.hpp"
 #include "kernel_vectorouter.hpp"
 #include "view.hpp"
@@ -631,6 +631,87 @@ TEST_CASE("Kernel: Verify Non-Square MatMatMult Host and Device", "kernel")
         for (size_t i = 0; i < N; i++)
             for (size_t j = 0; j < O; j++)
                 REQUIRE_THAT(C_host(i, j), Catch::Matchers::WithinRel(C_truth(i, j), 1.e-10));
+
+        // done!
+    }
+    Kokkos::finalize();
+}
+
+
+TEST_CASE("Kernel: Verify Kernel w/ Rank 0", "kernel")
+{
+    const size_t N = 100;
+
+    Kokkos::initialize();
+    {
+        std::vector<double> a(N);
+        std::vector<double> b(N);
+        std::vector<double> c(N);
+        std::vector<double> c_truth(N);
+
+        // initialize a and b
+        std::iota(a.begin(), a.end(), 1.0);
+
+        // b can just be all 10's or something
+        for (size_t i = 0; i < N; i++)
+            b[i] = 10.0;
+
+        for (size_t i = 0; i < N; i++)
+            c_truth[i] = a[i] * b[i];
+
+        constexpr auto data_names = std::make_tuple(HashedName<hash("a")>(),
+                                                    HashedName<hash("b")>(),
+                                                    HashedName<hash("c")>());
+
+        auto data_views = create_views(pack(a, b, c));
+
+        auto& a_views = std::get<find<hash("a")>(data_names)>(data_views);
+        auto& b_views = std::get<find<hash("b")>(data_names)>(data_views);
+        auto& c_views = std::get<find<hash("c")>(data_names)>(data_views);
+
+        // used for the checks after we finish
+        auto& c_host = std::get<0>(c_views);
+
+        KernelOptions options = { { DeviceSelector::HOST, DeviceSelector::DEVICE } };
+
+        // build the kernel
+        auto k = KernelTestR0(options, std::as_const(a_views), std::as_const(b_views), c_views);
+
+        // then run the kernel, starting on the host
+        k(DeviceSelector::HOST);
+
+        // then verify c as an output
+        for (size_t i = 0; i < N; i++)
+            REQUIRE_THAT(c_host(i), Catch::Matchers::WithinRel(c_truth[i], 1.e-10));
+
+        // TODO: only call this if CUDA is enabled, probably
+
+        // clear the c_host back to 0's
+        for (size_t i = 0; i < N; i++)
+            c[i] = 0.0;
+
+        // verify that c_host is 0's (to be safe)
+        for (size_t i = 0; i < N; i++)
+            REQUIRE_THAT(c_host(i), Catch::Matchers::WithinULP(0.0, 0));
+
+        // then do the data transfer to device
+        for (size_t i_view = 0; i_view < 3; i_view++)
+            transfer_data_host_to_device(i_view, k.data_views_);
+
+        // then run it on device
+        k(DeviceSelector::DEVICE);
+
+        // verify that c_host is still zeros, to make sure kernel worked on device
+        for (size_t i = 0; i < N; i++)
+            REQUIRE_THAT(c_host(i), Catch::Matchers::WithinULP(0.0, 0));
+
+        // then move it back to host for testing
+        for (size_t i_view = 0; i_view < 3; i_view++)
+            transfer_data_device_to_host(i_view, k.data_views_);
+
+        // then verify c as an output
+        for (size_t i = 0; i < N; i++)
+            REQUIRE_THAT(c_host(i), Catch::Matchers::WithinRel(c_truth[i], 1.e-10));
 
         // done!
     }

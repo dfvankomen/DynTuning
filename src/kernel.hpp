@@ -92,7 +92,12 @@ inline void call_kernel(const std::string& name,
                         ViewsType& views,
                         const FunctorType functor)
 {
-    if constexpr (KernelRank == 1)
+    if constexpr (KernelRank == 0)
+    {
+        // just call the functor, they only get views
+        functor(views);
+    }
+    else if constexpr (KernelRank == 1)
     {
         Kokkos::parallel_for(name, range_policy, KOKKOS_LAMBDA(int i) { functor(views, i); });
     }

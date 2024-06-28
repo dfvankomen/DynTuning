@@ -12,9 +12,31 @@
 // RangePolicy
 //=============================================================================
 
+// This dummy range policy type is designed specifically to avoid
+// kokkos errors. We're creating our own "rank 0" execution kernel,
+// which gives the user complete access to Kokkos intrinsics, including
+// the ability to write their own parallel-for and other such loops.
+struct DummyRangePolicyType
+{
+    using value_type = std::uint64_t;
+    value_type lower;
+    value_type upper;
+
+    DummyRangePolicyType(value_type low, value_type up)
+      : lower(low)
+      , upper(up) {};
+};
+
 // Used to rank to the corresponding RangePolicy type
 template<int KernelRank, typename ExecutionSpace>
 struct RangePolicy;
+
+// 0-dimensional ranges (for giving the user full control over the kokkos kernel)
+template<typename ExecutionSpace>
+struct RangePolicy<0, ExecutionSpace>
+{
+    using type = DummyRangePolicyType;
+};
 
 // 1-dimensional ranges (MDRangePolicy does not support 1D ranges)
 template<typename ExecutionSpace>
@@ -41,6 +63,15 @@ using ArrayIndex = std::uint64_t;
 template<int KernelRank>
 struct RangeExtent;
 
+// 0-dimensional ranges (for when the user needs control in the kernels)
+template<>
+struct RangeExtent<0>
+{
+    using value_type = ArrayIndex;
+    value_type lower;
+    value_type upper;
+};
+
 // 1-dimensional ranges (MDRangePolicy does not support 1D ranges)
 template<>
 struct RangeExtent<1>
@@ -64,13 +95,18 @@ struct RangeExtent
 // Helpers
 //=============================================================================
 
+inline RangeExtent<0> range_extent()
+{
+    return { 0, 0 };
+}
+
 inline RangeExtent<1> range_extent(const ArrayIndex& lower, const ArrayIndex& upper)
 {
     return { lower, upper };
 }
 
 inline RangeExtent<2> range_extent(const Kokkos::Array<ArrayIndex, 2>& lower,
-                            const Kokkos::Array<ArrayIndex, 2>& upper)
+                                   const Kokkos::Array<ArrayIndex, 2>& upper)
 {
     return { lower, upper };
 }
