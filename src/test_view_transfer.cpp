@@ -3,7 +3,10 @@
 #include "data.hpp"
 #include "data_transfers.hpp"
 
+#include <cstddef>
 #include <stdexcept>
+#include <tuple>
+#include <utility>
 
 typedef Kokkos::Cuda DeviceExecSpace;
 typedef Kokkos::RangePolicy<DeviceExecSpace> device_range_policy;
@@ -70,10 +73,8 @@ int main(int argc, char* argv[])
         //                                                                get_v(2, 2, data_views)));
 
 
-        auto views_dimension_flopped =
-          std::make_tuple(std::make_tuple(get_v(0, 0, data_views), get_v(1, 0, data_views)),
-                          std::make_tuple(get_v(0, 1, data_views), get_v(1, 1, data_views)),
-                          std::make_tuple(get_v(0, 2, data_views), get_v(1, 2, data_views)));
+        // invert the tuple with templated functions
+        auto views_dimension_flopped = invert_views(data_views);
 
 
         auto& x_host = std::get<0>(x_views);
