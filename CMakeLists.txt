@@ -65,6 +65,7 @@ target_include_directories(exe PRIVATE
 	"${CMAKE_CURRENT_SOURCE_DIR}/eigen/Eigen"
 	"${CUDA_HOME}/include"
   src
+  src/kernels
 )
 add_definitions(-w)
 target_compile_options(exe PRIVATE
@@ -89,6 +90,7 @@ target_include_directories(testViewTransfer PRIVATE
 	"${CMAKE_CURRENT_SOURCE_DIR}/eigen/Eigen"
 	"${CUDA_HOME}/include"
   src
+  src/kernels
 )
 add_definitions(-w)
 target_compile_options(testViewTransfer PRIVATE
@@ -122,6 +124,7 @@ target_include_directories(tests PRIVATE
 	"${CMAKE_CURRENT_SOURCE_DIR}/eigen/Eigen"
 	"${CUDA_HOME}/include"
   src
+  src/kernels
 )
 add_definitions(-w)
 target_compile_options(tests PRIVATE
