@@ -74,7 +74,7 @@ int main(int argc, char* argv[])
 
 
         // invert the tuple with templated functions
-        auto views_dimension_flopped = invert_views(data_views);
+        auto views_dimension_flopped = repack_views(data_views);
 
 
         auto& x_host = std::get<0>(x_views);

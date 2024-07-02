@@ -52,11 +52,7 @@ inline auto KernelTestR0(KernelOptions& options, ParameterTypes&... data_views)
 
     auto views_ = pack(data_views...);
 
-    auto views = std::make_tuple(
-      std::make_tuple(get_v(0, 0, views_), get_v(1, 0, views_), get_v(2, 0, views_)),
-      std::make_tuple(get_v(0, 1, views_), get_v(1, 1, views_), get_v(2, 1, views_)),
-      std::make_tuple(get_v(0, 2, views_), get_v(1, 2, views_), get_v(2, 2, views_)));
-
+    auto views = repack_views(views_);
 
     auto out    = std::get<2>(std::get<0>(views));
     auto extent = range_extent();

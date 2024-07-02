@@ -58,10 +58,7 @@ inline auto KernelVectorDot(KernelOptions& options, ParameterTypes&... data_view
     // views:  i = device, j = variable
     auto views_ = pack(data_views...);
 
-    auto views = std::make_tuple(
-      std::make_tuple(get_v(0, 0, views_), get_v(1, 0, views_), get_v(2, 0, views_)),
-      std::make_tuple(get_v(0, 1, views_), get_v(1, 1, views_), get_v(2, 1, views_)),
-      std::make_tuple(get_v(0, 2, views_), get_v(1, 2, views_), get_v(2, 2, views_)));
+    auto views = repack_views(views_);
 
     // set the extent based on the host view of the output
     auto out    = std::get<2>(std::get<0>(views));

@@ -5,6 +5,7 @@
 #include "common.hpp"
 #include "kernel.hpp"
 #include "range.hpp"
+#include "view.hpp"
 
 // just the traditional implementation, NOT FAST
 
@@ -62,10 +63,7 @@ inline auto KernelMatMatMult(KernelOptions& options, ParameterTypes&... data_vie
     // WARNING, remapping loses const!
     auto views_ = pack(data_views...);
 
-    auto views = std::make_tuple(
-      std::make_tuple(get_v(0, 0, views_), get_v(1, 0, views_), get_v(2, 0, views_)),
-      std::make_tuple(get_v(0, 1, views_), get_v(1, 1, views_), get_v(2, 1, views_)),
-      std::make_tuple(get_v(0, 2, views_), get_v(1, 2, views_), get_v(2, 2, views_)));
+    auto views = repack_views(views_);
     // first dim you pull out is host/scratch/device, second is variable
 
     // get the extent based on the host view of the matrix

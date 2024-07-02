@@ -373,7 +373,7 @@ struct get_views_inner_tuple_type
  * @return auto The new inner tuple that's transposed
  */
 template<size_t Idx, typename T, std::size_t... I>
-inline static auto invert_views_inner(const T& t, std::integer_sequence<std::size_t, I...>)
+inline static auto repack_views_inner(const T& t, std::integer_sequence<std::size_t, I...>)
 {
     // then just call std::make_tuple expanding out values
     // return std::make_tuple(get_v(I, Idx, t)...);
@@ -386,14 +386,14 @@ inline static auto invert_views_inner(const T& t, std::integer_sequence<std::siz
  * @tparam Idx The outer index (templated for consistent const at compile time)
  * @tparam T The main tuple type, expanded so the compiler can count them
  * @param t The major tuple of tuples, templated to get the "sizeof"
- * @return auto The the tuple from invert_views_inner
+ * @return auto The the tuple from repack_views_inner
  */
 template<size_t Idx, typename... T>
-inline static auto invert_views_outer(const std::tuple<T...>& t)
+inline static auto repack_views_outer(const std::tuple<T...>& t)
 {
     // we now know what "device" index we're on, so we need to iterate over the total number
     // on the outer index
-    return invert_views_inner<Idx>(t, std::make_index_sequence<sizeof...(T)> {});
+    return repack_views_inner<Idx>(t, std::make_index_sequence<sizeof...(T)> {});
 }
 
 /**
@@ -404,11 +404,11 @@ inline static auto invert_views_outer(const std::tuple<T...>& t)
  * @return auto The 3 X N tuple of tuples of the views
  */
 template<typename T>
-inline static auto invert_views(const T& t)
+inline static auto repack_views(const T& t)
 {
-    return std::make_tuple(invert_views_outer<0>(t),
-                           invert_views_outer<1>(t),
-                           invert_views_outer<2>(t));
+    return std::make_tuple(repack_views_outer<0>(t),
+                           repack_views_outer<1>(t),
+                           repack_views_outer<2>(t));
 }
 
 
