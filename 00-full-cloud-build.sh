@@ -7,11 +7,16 @@
 # in the README script are perfectly fine for if there's a
 # container that needs to be built and run.
 
+TEMP_CURR_DIR=$(pwd)
+
 # set up the environment
-source ./setup-env.sh googlecloud
+. ./setup-env.sh googlecloud
 
 # then prepare the build environment
 . ./install-env.sh
+
+cd "${TEMP_CURR_DIR}"
+unset TEMP_CURR_DIR
 
 # then set up the build
 . ./build.sh

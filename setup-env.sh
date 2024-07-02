@@ -43,6 +43,7 @@ elif [[ "${1}" == "googlecloud" ]]; then
   # set home paths
   export CUDA_HOME=~/opt/cuda
   export KOKKOS_HOME=~/opt/kokkos
+  export KOKKOS_KERNELS_HOME=~/opt/kokkos-kernels
 
   # ensure CUDA is on the path
   export PATH="${CUDA_HOME}/bin:${PATH}"
@@ -50,6 +51,7 @@ elif [[ "${1}" == "googlecloud" ]]; then
   
   # ensure KOKKOS is on the path
   export PATH="${KOKKOS_HOME}/bin:${PATH}"
+  export PATH="${KOKKOS_KERNELS_HOME}/bin:${PATH}"
   
   # set the Kokkos_ARCH values
   export CPU_ARCH=SKX

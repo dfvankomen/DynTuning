@@ -6,6 +6,7 @@ option(Kokkos_DEVICE "Execution space for device code" OFF)
 
 # Requires KOKKOS
 find_package(Kokkos REQUIRED HINTS "./kokkos-4.1.00/build")
+find_package(KokkosKernels REQUIRED HINTS "./kokkos-kernels-4.1.00/build")
 
 # set the host execution space macro
 list(FIND Kokkos_DEVICES "SERIAL" _idx_SERIAL)
@@ -116,6 +117,7 @@ FetchContent_MakeAvailable(Catch2)
 add_executable(tests tests/data.test.cpp tests/kernels.test.cpp tests/algorithm.test.cpp)
 target_link_libraries(tests PRIVATE Catch2::Catch2WithMain)
 target_link_libraries(tests PRIVATE Kokkos::kokkos)
+target_link_libraries(tests PRIVATE Kokkos::kokkoskernels)
 target_include_directories(tests PRIVATE
 	"${CMAKE_CURRENT_SOURCE_DIR}/eigen/Eigen"
 	"${CUDA_HOME}/include"
