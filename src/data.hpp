@@ -1,6 +1,7 @@
 #pragma once
 
 #include "view.hpp"
+
 #include <string>
 #include <tuple>
 
@@ -8,13 +9,15 @@
 // is not structural and does not use external linkage, so it is not allowed.
 // So, we store the hash of the string instead, and this provides the compile-time hash.
 // Credit: https://www.reddit.com/r/cpp/comments/jkw84k/strings_in_switch_statements_using_constexp/
-constexpr std::size_t hash(const char* str){
-    const long long p = 131;
-    const long long m = 4294967291; // 2^32 - 5, largest 32 bit prime
-    long long total = 0;
+constexpr std::size_t hash(const char* str)
+{
+    const long long p            = 131;
+    const long long m            = 4294967291; // 2^32 - 5, largest 32 bit prime
+    long long total              = 0;
     long long current_multiplier = 1;
-    for (int i = 0; str[i] != '\0'; ++i){
-        total = (total + current_multiplier * str[i]) % m;
+    for (int i = 0; str[i] != '\0'; ++i)
+    {
+        total              = (total + current_multiplier * str[i]) % m;
         current_multiplier = (current_multiplier * p) % m;
     }
     return total;
@@ -25,26 +28,28 @@ constexpr std::size_t hash(const char* str){
 template<std::size_t NameHash>
 struct HashedName
 {
-    constexpr HashedName () {};
+    constexpr HashedName() {};
     static constexpr std::size_t hash = NameHash;
 };
 
 // Fall back if I == size of tuple, returns -1
 template<std::size_t HashToFind, std::size_t I = 0, typename... Tp>
-constexpr typename std::enable_if<I == sizeof...(Tp), std::size_t>::type
-find(const std::tuple<Tp...>& t)
+constexpr typename std::enable_if<I == sizeof...(Tp), std::size_t>::type find(
+  const std::tuple<Tp...>& t)
 {
     return -1;
 }
 // Returns the index of in the tuple for the name that matches HashToFind
 template<std::size_t HashToFind, std::size_t I = 0, typename... Tp>
-constexpr typename std::enable_if<I < sizeof...(Tp), std::size_t>::type
-find(const std::tuple<Tp...>& t)
+  constexpr typename std::enable_if <
+  I<sizeof...(Tp), std::size_t>::type find(const std::tuple<Tp...>& t)
 {
-    if (std::get<I>(t).hash == HashToFind) {
+    if (std::get<I>(t).hash == HashToFind)
+    {
         return I;
     }
-    else {
+    else
+    {
         return find<HashToFind, I + 1, Tp...>(t);
     }
 }
@@ -62,11 +67,6 @@ inline constexpr auto make_data_names(const First first, const Rest... rest) {
     return std::tuple_cat(std::make_tuple(HashedName<hash(first)>()), make_data_names(rest...));
 }
 */
-
-
-
-
-
 
 
 
@@ -94,7 +94,7 @@ inline auto MakeDataManager(NamesType names, std::tuple<ParameterTypes&...> para
 }
 */
 
-//template <typename DataManagerType>
-//inline auto get_data(const char* s, DataManagerType& DataManager) {
-//    return std::get<find<hash(s)>(DataManager.names_)>(DataManager.data_);
-//}
+// template <typename DataManagerType>
+// inline auto get_data(const char* s, DataManagerType& DataManager) {
+//     return std::get<find<hash(s)>(DataManager.names_)>(DataManager.data_);
+// }
