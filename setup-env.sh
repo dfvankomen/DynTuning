@@ -38,6 +38,10 @@ if [[ "${1}" == "narwhal" ]]; then
   # set number of processors to use for compiling
   export MAKE_NPROCS=32
 
+  # openmp options
+  export OMP_PLACES=threads
+  export OMP_PROC_BIND=spread
+
 elif [[ "${1}" == "googlecloud" ]]; then
   
   # set home paths
@@ -59,6 +63,10 @@ elif [[ "${1}" == "googlecloud" ]]; then
 
   # set number of processors to use for compiling
   export MAKE_NPROCS=8
+
+  # openmp options
+  export OMP_PLACES=threads
+  export OMP_PROC_BIND=spread
 
 else
   error=1
