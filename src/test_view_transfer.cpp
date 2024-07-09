@@ -5,76 +5,12 @@
 #include "kernel.hpp"
 
 #include <cstddef>
-#include <stdexcept>
 #include <tuple>
-#include <utility>
 
 typedef Kokkos::Cuda DeviceExecSpace;
 typedef Kokkos::RangePolicy<DeviceExecSpace> device_range_policy;
 
 #define get_v(i, j, tuple) std::get<j>(std::get<i>(tuple))
-
-static inline std::size_t calc_linspace_inline(const std::size_t start,
-                                               const std::size_t end,
-                                               const std::size_t steps,
-                                               const std::size_t i);
-
-// linspace inline calculation
-static inline std::size_t calc_linspace_inline(const std::size_t start,
-                                               const std::size_t end,
-                                               const std::size_t steps,
-                                               const std::size_t i)
-{
-    // return (T)((double)start + (((double)end - (double)start) / (double)(steps - 1)) *
-    // (double)i);
-    return static_cast<std::size_t>(
-      static_cast<double>(start) +
-      ((static_cast<double>(end) - static_cast<double>(start)) / static_cast<double>(steps - 1)) *
-        static_cast<double>(i));
-}
-
-template<std::size_t ThreadsStart,
-         std::size_t ThreadsEnd,
-         std::size_t ThreadsSteps,
-         std::size_t... I>
-inline static auto create_execution_spaces_first_step(std::integer_sequence<std::size_t, I...>)
-{
-    return std::make_tuple(calc_linspace_inline(ThreadsStart, ThreadsEnd, ThreadsSteps, I)...);
-}
-
-template<std::size_t ThreadsStart, std::size_t ThreadsEnd, std::size_t ThreadsSteps>
-inline static auto create_execution_spaces_device()
-{
-    return create_execution_spaces_first_step<ThreadsStart, ThreadsEnd, ThreadsSteps>(
-      std::make_index_sequence<ThreadsSteps> {});
-}
-
-
-// this is how the linspace is computed and stored in kernels,
-// this will need to be modified
-constexpr auto most_internal_linspace(double start, double end, std::size_t nsteps, std::size_t i)
-{
-    return start + i * ((end - start) / (nsteps - 1));
-}
-
-template<std::size_t... I>
-constexpr auto linspace_calc(double start,
-                             double end,
-                             std::size_t nsteps,
-                             std::index_sequence<I...>)
-{
-    return std::make_tuple(
-      static_cast<std::size_t>(most_internal_linspace(start, end, nsteps, I))...);
-}
-
-template<std::size_t N>
-constexpr auto linspace(double start, double end)
-{
-    static_assert(N > 1,
-                  "Number of steps has to be greater than 1 for linspace calculations to work!");
-    return linspace_calc(start, end, N, std::make_index_sequence<N> {});
-}
-
 
 
 // now to create a tuple that stores a bunch of "classes" or types of some kind
@@ -92,37 +28,6 @@ int main(int argc, char* argv[])
     DeviceSelector device = set_device(argc, argv);
     int N                 = set_N(argc, argv);
 
-    // simple linspace tuple
-    std::cout << std::endl << "1D Attempt, pure numbers:" << std::endl;
-    auto mytuple    = linspace<10>(1, 52);
-    auto printTuple = [](auto&&... args)
-    {
-        ((std::cout << args << " "), ...);
-    };
-    std::apply(printTuple, mytuple);
-    std::cout << std::endl;
-
-    // 1D with the kernel's max threads
-    std::cout << std::endl << "1D Attempt:" << std::endl;
-    auto mytuple_kernel   = linspace_kernel<10>(1, 20);
-    auto printTupleKernel = [](auto&&... args)
-    {
-        ((std::cout << args.maxthreads << " "), ...);
-    };
-    std::apply(printTupleKernel, mytuple_kernel);
-    std::cout << std::endl;
-
-
-    std::cout << std::endl << "2D Attempt (tuple of tuples):" << std::endl;
-    auto tuple_large = linspace_start<4, 5>(1, 10, 11, 20);
-    iter_tuple(tuple_large,
-               [&]<typename TupleType>(size_t i, TupleType& tup_val)
-    {
-        iter_tuple(tup_val, [&]<typename TupleTypeInner>(size_t j, TupleTypeInner& tupp) {
-            std::cout << "(" << tupp.maxthreads << ", " << tupp.minblocks << ") ";
-        });
-    });
-    std::cout << std::endl;
 
     // std::cout << "Hey" << std::endl;
     // iter_tuple(tup, [&]<typename TupleType>(size_t id, TupleType& tup_val) {
@@ -138,6 +43,15 @@ int main(int argc, char* argv[])
         // std::vector<double> a(N);
         std::vector<double> x(N);
         // std::vector<double> y(N);
+
+        // attempt to build a kernel 
+
+        std::cout << std::endl << "Generated Tuples:" << std::endl;
+        auto tuple_flattened = linspace_unrolled<3, 5>(1, 5, 6, 20);
+        iter_tuple(tuple_flattened, [&]<typename TupleType>(size_t i, TupleType& tup_val) {
+            std::cout << "(" << tup_val.maxthreads << ", " << tup_val.minblocks << ") ";
+        });
+        std::cout << std::endl;
 
         {
             printf("\ninitializing data\n");
