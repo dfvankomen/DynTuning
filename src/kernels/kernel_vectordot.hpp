@@ -64,12 +64,27 @@ inline auto KernelVectorDot(KernelOptions& options, ParameterTypes&... data_view
     auto out    = std::get<2>(std::get<0>(views));
     auto extent = range_extent(0, out.extent(0));
 
+
+    // then build up the policy collection
+    auto full_policy_collection = create_range_policy_device<1>(extent);
+
+    // TODO: user can adjust the policy via a similar method:
+    // TODO: probably don't need to specify the device for this function
+    // auto full_policy_collection =
+    //   create_range_policy_device<1, Kokkos::KOKKOS_DEVICE, 32, 150, 8, 1, 10, 3>(extent);
+
     // create the kernel
     return Kernel<1,
                   FunctorVectorDot_Host,
                   FunctorVectorDot_Device,
                   decltype(views),
-                  decltype(is_const)>(name, views, is_const, extent, options);
+                  decltype(is_const),
+                  decltype(full_policy_collection)>(name,
+                                                    views,
+                                                    is_const,
+                                                    extent,
+                                                    options,
+                                                    full_policy_collection);
 }
 
 /*

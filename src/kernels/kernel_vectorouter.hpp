@@ -81,12 +81,26 @@ inline auto KernelVectorOuter(KernelOptions& options, ParameterTypes&... data_vi
 
     auto extent = range_extent({ 0, 0 }, { N, M });
 
+    // then build up the policy collection
+    auto full_policy_collection = create_range_policy_device<2>(extent);
+
+    // TODO: user can adjust the policy via a similar method:
+    // TODO: probably don't need to specify the device for this function
+    // auto full_policy_collection =
+    //   create_range_policy_device<2, Kokkos::KOKKOS_DEVICE, 32, 150, 8, 1, 10, 3>(extent);
+
     // create the kernel
     return Kernel<2,
                   FunctorVectorOuter_Host,
                   FunctorVectorOuter_Device,
                   decltype(views),
-                  decltype(is_const)>(name, views, is_const, extent, options);
+                  decltype(is_const),
+                  decltype(full_policy_collection)>(name,
+                                                    views,
+                                                    is_const,
+                                                    extent,
+                                                    options,
+                                                    full_policy_collection);
 }
 
 /*

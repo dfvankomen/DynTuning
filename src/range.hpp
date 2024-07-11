@@ -28,28 +28,30 @@ struct DummyRangePolicyType
 };
 
 // Used to rank to the corresponding RangePolicy type
-template<int KernelRank, typename ExecutionSpace>
+template<int KernelRank,
+         typename ExecutionSpace,
+         typename LaunchBounds = Kokkos::LaunchBounds<0, 0>>
 struct RangePolicy;
 
 // 0-dimensional ranges (for giving the user full control over the kokkos kernel)
-template<typename ExecutionSpace>
-struct RangePolicy<0, ExecutionSpace>
+template<typename ExecutionSpace, typename LaunchBounds>
+struct RangePolicy<0, ExecutionSpace, LaunchBounds>
 {
     using type = DummyRangePolicyType;
 };
 
 // 1-dimensional ranges (MDRangePolicy does not support 1D ranges)
-template<typename ExecutionSpace>
-struct RangePolicy<1, ExecutionSpace>
+template<typename ExecutionSpace, typename LaunchBounds>
+struct RangePolicy<1, ExecutionSpace, LaunchBounds>
 {
-    using type = Kokkos::RangePolicy<ExecutionSpace>;
+    using type = Kokkos::RangePolicy<ExecutionSpace, LaunchBounds>;
 };
 
 // Dimensions > 1
-template<int KernelRank, typename ExecutionSpace>
+template<int KernelRank, typename ExecutionSpace, typename LaunchBounds>
 struct RangePolicy
 {
-    using type = Kokkos::MDRangePolicy<ExecutionSpace, Kokkos::Rank<KernelRank>>;
+    using type = Kokkos::MDRangePolicy<ExecutionSpace, Kokkos::Rank<KernelRank>, LaunchBounds>;
 };
 
 
@@ -109,4 +111,54 @@ inline RangeExtent<2> range_extent(const Kokkos::Array<ArrayIndex, 2>& lower,
                                    const Kokkos::Array<ArrayIndex, 2>& upper)
 {
     return { lower, upper };
+}
+
+
+// AFTER THINKING ABOUT IT MORE, I don't think this will actually work! This is if we could have
+// these thread values be at run time, but they're all at compile time!
+using TheadAndBlockIndex = std::uint64_t;
+
+template<int KernelRank>
+struct ThreadAndBlockExtent;
+
+template<>
+struct ThreadAndBlockExtent<0>
+{
+    using value_type = TheadAndBlockIndex;
+    value_type min_threads;
+    value_type max_threads;
+    value_type num_threads;
+    value_type min_blocks;
+    value_type max_blocks;
+    value_type num_blocks;
+};
+
+
+template<int KernelRank>
+struct ThreadAndBlockExtent
+{
+    using value_type = TheadAndBlockIndex;
+    value_type min_threads;
+    value_type max_threads;
+    value_type num_threads;
+    value_type min_blocks;
+    value_type max_blocks;
+    value_type num_blocks;
+};
+
+// storage class for different types of policies
+inline ThreadAndBlockExtent<0> thread_block_extent()
+{
+    return { 0, 0, 1, 0, 0, 1 };
+}
+
+template<int KernelRank>
+inline ThreadAndBlockExtent<KernelRank> thread_block_extent(TheadAndBlockIndex min_threads,
+                                                            TheadAndBlockIndex max_threads,
+                                                            TheadAndBlockIndex n_threads,
+                                                            TheadAndBlockIndex min_blocks,
+                                                            TheadAndBlockIndex max_blocks,
+                                                            TheadAndBlockIndex n_blocks)
+{
+    return { min_threads, max_threads, n_threads, min_blocks, max_blocks, n_blocks };
 }

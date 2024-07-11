@@ -74,11 +74,28 @@ inline auto KernelMatVecMult(KernelOptions& options, ParameterTypes&... data_vie
     unsigned long N = out.extent(0);
     unsigned long M = out.extent(1);
     auto extent     = range_extent({ 0, 0 }, { N, M });
+
+    // execution policy tuple to store the different types of policies
+    // TODO: probably don't need to specify the device for this function
+    auto full_policy_collection =
+      create_range_policy_device<2, Kokkos::KOKKOS_DEVICE, 32, 150, 8, 1, 10, 3>(extent);
+
+    // TODO: user can adjust the policy via a similar method:
+    // TODO: probably don't need to specify the device for this function
+    // auto full_policy_collection =
+    //   create_range_policy_device<2, Kokkos::KOKKOS_DEVICE, 32, 150, 8, 1, 10, 3>(extent);
+
     return Kernel<2,
                   FunctorMatVecMult_Host,
                   FunctorMatVecMult_Device,
                   decltype(views),
-                  decltype(is_const)>(name, views, is_const, extent, options);
+                  decltype(is_const),
+                  decltype(full_policy_collection)>(name,
+                                                    views,
+                                                    is_const,
+                                                    extent,
+                                                    options,
+                                                    full_policy_collection);
 }
 
 /*

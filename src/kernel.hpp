@@ -22,9 +22,8 @@ template<int KernelRank,
          class HostFunctorType,
          class DeviceFunctorType,
          typename DataViewsType,
-         typename IsConstTupleType>
-//  typename HostExecutionPolicyCollection,
-//  typename DeviceExecutionPolicyCollection>
+         typename IsConstTupleType,
+         typename DeviceExecutionPolicyCollection>
 class Kernel
 {
   public:
@@ -41,10 +40,7 @@ class Kernel
            DataViewsType views,
            IsConstTupleType is_const,
            const RangeExtent<KernelRank>& extent,
-           KernelOptions& options
-           //    HostExecutionPolicyCollection& host_execution_policies,
-           //    DeviceExecutionPolicyCollection& device_execution_policies)
-           )
+           KernelOptions& options)
       : kernel_name_(std::string(name))
       , data_views_(views)
       , is_const_(is_const)
@@ -53,14 +49,30 @@ class Kernel
       , range_policy_host_(HostRangePolicy(extent.lower, extent.upper))
       , range_policy_device_(DeviceRangePolicy(extent.lower, extent.upper))
       , options_(options)
-    //   , host_execution_policies_(host_execution_policies)
-    //   , device_execution_policies_(device_execution_policies)
     {
     }
 
-    void operator()(DeviceSelector device_selector)
+    Kernel(const char* name,
+           DataViewsType views,
+           IsConstTupleType is_const,
+           const RangeExtent<KernelRank>& extent,
+           KernelOptions& options,
+           DeviceExecutionPolicyCollection& device_execution_policies)
+      : kernel_name_(std::string(name))
+      , data_views_(views)
+      , is_const_(is_const)
+      , range_lower_(extent.lower)
+      , range_upper_(extent.upper)
+      , range_policy_host_(HostRangePolicy(extent.lower, extent.upper))
+      , range_policy_device_(DeviceRangePolicy(extent.lower, extent.upper))
+      , options_(options)
+      , device_execution_policies_(device_execution_policies)
     {
-        call_kernel(*this, device_selector);
+    }
+
+    void operator()(DeviceSelector device_selector, std::size_t rpIdx = 0)
+    {
+        call_kernel(*this, device_selector, rpIdx);
     };
 
     // kernel name for debugging
@@ -85,7 +97,8 @@ class Kernel
 
     // the ranges
     // HostExecutionPolicyCollection host_execution_policies_;
-    // DeviceExecutionPolicyCollection device_execution_policies_;
+    DeviceExecutionPolicyCollection device_execution_policies_;
+    std::size_t n_device_execution_policies_ = std::tuple_size_v<DeviceExecutionPolicyCollection>;
 };
 
 
@@ -117,7 +130,7 @@ inline void call_kernel(const std::string& name,
 }
 
 template<typename KernelType>
-inline void call_kernel(KernelType& k, DeviceSelector device_selector)
+inline void call_kernel(KernelType& k, DeviceSelector device_selector, std::size_t idx = 0)
 {
     if (device_selector == DeviceSelector::HOST)
     {
@@ -128,10 +141,30 @@ inline void call_kernel(KernelType& k, DeviceSelector device_selector)
     }
     else if (device_selector == DeviceSelector::DEVICE)
     {
-        call_kernel<KernelType::rank>(k.kernel_name_,
-                                      k.range_policy_device_,
-                                      std::get<1>(k.data_views_),
-                                      k.kernel_functor_device_);
+        if constexpr (std::tuple_size_v<decltype(k.device_execution_policies_)> > 1)
+        {
+            find_tuple(k.device_execution_policies_,
+                       idx,
+                       [&]<typename KernelExecutionPolicyType>(
+                         KernelExecutionPolicyType& range_policy_device)
+            {
+#if 0
+                std::cout << "    Executing: " << prettytypename<KernelExecutionPolicyType>()
+                          << std::endl;
+#endif
+                call_kernel<KernelType::rank>(k.kernel_name_,
+                                              range_policy_device,
+                                              std::get<1>(k.data_views_),
+                                              k.kernel_functor_device_);
+            });
+        }
+        else
+        {
+            call_kernel<KernelType::rank>(k.kernel_name_,
+                                          std::get<0>(k.device_execution_policies_),
+                                          std::get<1>(k.data_views_),
+                                          k.kernel_functor_device_);
+        }
     }
 }
 
@@ -144,72 +177,101 @@ inline auto kernel_io_map(T&... args)
 
 
 
-struct MyTestObject
+constexpr auto linspace_val(double start, double end, unsigned int nsteps, unsigned int i)
 {
-    std::size_t maxthreads;
-    std::size_t minblocks;
-};
-
-
-constexpr auto most_internal_linspace_hi(double start,
-                                         double end,
-                                         std::size_t nsteps,
-                                         std::size_t i)
-{
-    return static_cast<std::size_t>(start + i * ((end - start) / (nsteps - 1)));
+    return static_cast<unsigned int>(start + i * ((end - start) / (nsteps - 1)));
 }
 
-constexpr auto linspace_inner_inner(double start_thread,
-                                    double end_thread,
-                                    double start_block,
-                                    double end_block,
-                                    std::size_t n_thread,
-                                    std::size_t n_block,
-                                    std::size_t k)
+
+template<int KernelRank, typename ExecutionSpace>
+constexpr auto _crpd_innermost_default(const RangeExtent<KernelRank>& extent)
 {
-    std::size_t i = k / n_block;
-    std::size_t j = k % n_block;
+    using DeviceRangePolicy = typename RangePolicy<KernelRank, ExecutionSpace>::type;
 
     // then we can create our object
-    return MyTestObject({ most_internal_linspace_hi(start_thread, end_thread, n_thread, i),
-                          most_internal_linspace_hi(start_block, end_block, n_block, j) });
+    return DeviceRangePolicy(extent.lower, extent.upper);
 }
 
-template<std::size_t... I>
-constexpr auto linspace_unrolled_inner(double start_thread,
-                             double end_thread,
-                             double start_block,
-                             double end_block,
-                             std::size_t n_thread,
-                             std::size_t n_block,
-                             std::index_sequence<I...>)
+template<int KernelRank,
+         typename ExecutionSpace,
+         unsigned int StartThreads,
+         unsigned int EndThreads,
+         unsigned int NThreads,
+         unsigned int StartBlocks,
+         unsigned int EndBlocks,
+         unsigned int NBlocks,
+         unsigned int K>
+constexpr auto _crpd_innermost(const RangeExtent<KernelRank>& extent)
 {
-    return std::make_tuple(linspace_inner_inner(start_thread,
-                                                end_thread,
-                                                start_block,
-                                                end_block,
-                                                n_thread,
-                                                n_block,
-                                                I)...);
+    constexpr unsigned int threads = linspace_val(StartThreads, EndThreads, NThreads, K / NBlocks);
+    constexpr unsigned int blocks  = linspace_val(StartBlocks, EndBlocks, NBlocks, K % NBlocks);
+    using ComputedLaunchBounds     = typename Kokkos::LaunchBounds<threads, blocks>;
+    using DeviceRangePolicy =
+      typename RangePolicy<KernelRank, ExecutionSpace, ComputedLaunchBounds>::type;
+
+    // then we can create our object
+    // return MyTestObject({ threads, blocks });
+    return DeviceRangePolicy(extent.lower, extent.upper);
 }
 
-template<std::size_t N, std::size_t M>
-constexpr auto linspace_unrolled(double start_thread,
-                                 double end_thread,
-                                 double start_block,
-                                 double end_block)
+template<int KernelRank,
+         typename ExecutionSpace,
+         unsigned int StartThreads,
+         unsigned int EndThreads,
+         unsigned int NThreads,
+         unsigned int StartBlocks,
+         unsigned int EndBlocks,
+         unsigned int NBlocks,
+         std::size_t... I>
+constexpr auto _crpd_inner(const RangeExtent<KernelRank>& extent, std::index_sequence<I...>)
 {
-    static_assert(N > 1,
+    // create a tuple that holds everything we need
+    // the first one should include Kokkos' automatic just in case
+    return std::make_tuple(_crpd_innermost_default<KernelRank, ExecutionSpace>(extent),
+                           _crpd_innermost<KernelRank,
+                                           ExecutionSpace,
+                                           StartThreads,
+                                           EndThreads,
+                                           NThreads,
+                                           StartBlocks,
+                                           EndBlocks,
+                                           NBlocks,
+                                           I>(extent)...);
+}
+
+template<int KernelRank,
+         typename ExecutionSpace,
+         unsigned int StartThreads,
+         unsigned int EndThreads,
+         unsigned int NThreads,
+         unsigned int StartBlocks,
+         unsigned int EndBlocks,
+         unsigned int NBlocks>
+constexpr auto create_range_policy_device(const RangeExtent<KernelRank>& extent)
+{
+    static_assert(NThreads > 1,
                   "Number of steps has to be greater than 1 for linspace calculations to work!");
-    static_assert(M > 1,
+    static_assert(NBlocks > 1,
                   "Number of steps has to be greater than 1 for linspace calculations to work!");
 
     // now we can call the first layer
-    return linspace_unrolled_inner(start_thread,
-                                   end_thread,
-                                   start_block,
-                                   end_block,
-                                   N,
-                                   M,
-                                   std::make_index_sequence<N * M> {});
+    return _crpd_inner<KernelRank,
+                       ExecutionSpace,
+                       StartThreads,
+                       EndThreads,
+                       NThreads,
+                       StartBlocks,
+                       EndBlocks,
+                       NBlocks>(extent, std::make_index_sequence<NThreads * NBlocks> {});
+}
+
+
+template<int KernelRank, typename ExecutionSpace = Kokkos::KOKKOS_DEVICE>
+constexpr auto create_range_policy_device(const RangeExtent<KernelRank>& extent)
+{
+    using DeviceRangePolicy = typename RangePolicy<KernelRank, ExecutionSpace>::type;
+
+    // then we can create our object
+    // return MyTestObject({ threads, blocks });
+    return std::make_tuple(DeviceRangePolicy(extent.lower, extent.upper));
 }
