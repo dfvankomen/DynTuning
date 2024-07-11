@@ -18,26 +18,6 @@ typedef Kokkos::MDRangePolicy<DeviceExecSpace, Kokkos::Rank<2>> device_rank2_ran
 
 #define get_v(i, j, tuple) std::get<j>(std::get<i>(tuple))
 
-// inner most loop calls the get_v multiple times
-// template<typename... T, std::size_t... I>
-// inline static auto transpose_tuple_inner(std::tuple<T...> t, size_t& j,
-// std::integer_sequence<std::size_t, I...>) {
-//     return get_v(I, j, t);
-// }
-
-// template<typename... T>
-// inline static auto transpose_tuple_outer(std::tuple<T...> t, const size_t& j)
-// {
-//     return std::make_tuple(transpose_tuple_inner(std::make_index_sequence<sizeof...(T)> {}, j,
-//     t)...);
-// }
-
-// template<typename... T>
-// inline static auto transpose_tuple(std::tuple<T...> t)
-// {
-//     return std::make_tuple(transpose_tuple_outer(t, 0), transpose_tuple_outer(t, 1),
-//     transpose_tuple_outer(t, 2));
-// }
 
 TEST_CASE("Vector to View Tests", "views")
 {
@@ -89,14 +69,11 @@ TEST_CASE("Vector to View Tests", "views")
 
         SECTION("Testing View Tuple Reorder")
         {
-            auto views_dimension_flopped =
-              std::make_tuple(std::make_tuple(get_v(0, 0, data_views), get_v(1, 0, data_views)),
-                              std::make_tuple(get_v(0, 1, data_views), get_v(1, 1, data_views)),
-                              std::make_tuple(get_v(0, 2, data_views), get_v(1, 2, data_views)));
-            // auto views_flopped_new = transpose_tuple(data_views);
+            auto views_dimension_flopped = repack_views(data_views);
 
             // after flopping the dimensions, the views should now be in order of [host_views,
             // device_views, scratch_views]
+            // TODO: tests to make sure they line up
         }
     }
     Kokkos::finalize();
@@ -189,10 +166,7 @@ TEST_CASE("Rank 1 View Data Transfer Tests", "data-transfer")
         auto& b_views = std::get<find<hash("b")>(data_names)>(data_views);
 
         // TODO: replace with proper templated version
-        auto views_dimension_flopped =
-          std::make_tuple(std::make_tuple(get_v(0, 0, data_views), get_v(1, 0, data_views)),
-                          std::make_tuple(get_v(0, 1, data_views), get_v(1, 1, data_views)),
-                          std::make_tuple(get_v(0, 2, data_views), get_v(1, 2, data_views)));
+        auto views_dimension_flopped = repack_views(data_views);
 
         // and get an easy access to the views
         auto& a_host = std::get<0>(a_views);
@@ -293,10 +267,7 @@ TEST_CASE("Rank 2 View Data Transfer Tests", "data-transfer")
         auto& B_views = std::get<find<hash("B")>(data_names)>(data_views);
 
         // TODO: replace with proper templated version
-        auto views_dimension_flopped =
-          std::make_tuple(std::make_tuple(get_v(0, 0, data_views), get_v(1, 0, data_views)),
-                          std::make_tuple(get_v(0, 1, data_views), get_v(1, 1, data_views)),
-                          std::make_tuple(get_v(0, 2, data_views), get_v(1, 2, data_views)));
+        auto views_dimension_flopped = repack_views(data_views);
 
         // and get an easy access to the views
         auto& A_host = std::get<0>(A_views);
@@ -453,17 +424,7 @@ TEST_CASE("Test Multiple View Construction", "views")
         REQUIRE_THAT(Y_host(9, 4), Catch::Matchers::WithinULP(50.0, 0));
 
         // // test the view tuple reorder
-        // SECTION("Testing View Tuple Reorder")
-        // {
-        //     auto views_dimension_flopped =
-        //       std::make_tuple(std::make_tuple(get_v(0, 0, data_views), get_v(1, 0, data_views)),
-        //                       std::make_tuple(get_v(0, 1, data_views), get_v(1, 1, data_views)),
-        //                       std::make_tuple(get_v(0, 2, data_views), get_v(1, 2, data_views)));
-        //     // auto views_flopped_new = transpose_tuple(data_views);
-
-        //     // after flopping the dimensions, the views should now be in order of [host_views,
-        //     // device_views, scratch_views]
-        // }
+        // TODO: test this
     }
     Kokkos::finalize();
 }
