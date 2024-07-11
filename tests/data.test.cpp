@@ -69,7 +69,7 @@ TEST_CASE("Vector to View Tests", "views")
 
         SECTION("Testing View Tuple Reorder")
         {
-            auto views_dimension_flopped = repack_views(data_views);
+            auto views_dimension_transposed = repack_views(data_views);
 
             // after flopping the dimensions, the views should now be in order of [host_views,
             // device_views, scratch_views]
@@ -166,7 +166,7 @@ TEST_CASE("Rank 1 View Data Transfer Tests", "data-transfer")
         auto& b_views = std::get<find<hash("b")>(data_names)>(data_views);
 
         // TODO: replace with proper templated version
-        auto views_dimension_flopped = repack_views(data_views);
+        auto views_dimension_transposed = repack_views(data_views);
 
         // and get an easy access to the views
         auto& a_host = std::get<0>(a_views);
@@ -177,7 +177,7 @@ TEST_CASE("Rank 1 View Data Transfer Tests", "data-transfer")
         // modification, and then check upon return if the values are correct
         for (size_t i_data = 0; i_data < 2; i_data++)
         {
-            transfer_data_host_to_device(i_data, views_dimension_flopped);
+            transfer_data_host_to_device(i_data, views_dimension_transposed);
         }
 
         // micro kokkos kernel just to see if the data actually transferred by doing some simple
@@ -194,7 +194,7 @@ TEST_CASE("Rank 1 View Data Transfer Tests", "data-transfer")
         // TRANSFER BACK TO HOST
         for (size_t i_data = 0; i_data < 2; i_data++)
         {
-            transfer_data_device_to_host(i_data, views_dimension_flopped);
+            transfer_data_device_to_host(i_data, views_dimension_transposed);
         }
 
 
@@ -267,7 +267,7 @@ TEST_CASE("Rank 2 View Data Transfer Tests", "data-transfer")
         auto& B_views = std::get<find<hash("B")>(data_names)>(data_views);
 
         // TODO: replace with proper templated version
-        auto views_dimension_flopped = repack_views(data_views);
+        auto views_dimension_transposed = repack_views(data_views);
 
         // and get an easy access to the views
         auto& A_host = std::get<0>(A_views);
@@ -277,7 +277,7 @@ TEST_CASE("Rank 2 View Data Transfer Tests", "data-transfer")
         // Since we can't easily access the data on the device, we have to do the transfer, do a
         // modification, and then check upon return if the values are correct
         for (size_t i_data = 0; i_data < 2; i_data++)
-            transfer_data_host_to_device(i_data, views_dimension_flopped);
+            transfer_data_host_to_device(i_data, views_dimension_transposed);
 
         // micro kokkos kernel just to see if the data actually transferred by doing some simple
         // math
@@ -293,7 +293,7 @@ TEST_CASE("Rank 2 View Data Transfer Tests", "data-transfer")
 
         // TRANSFER BACK TO HOST
         for (size_t i_data = 0; i_data < 2; i_data++)
-            transfer_data_device_to_host(i_data, views_dimension_flopped);
+            transfer_data_device_to_host(i_data, views_dimension_transposed);
 
         // now we do some comparisons on the host data to make sure they're what we expect.
         // A should contain value from 501 - 601 now

@@ -188,7 +188,7 @@ int main(int argc, char* argv[])
         // auto& a_views = std::get<find<hash("a")>(data_names)>(data_views);
 
 
-        // auto views_dimension_flopped = std::make_tuple(std::make_tuple(get_v(0, 0, data_views),
+        // auto views_dimension_transposed = std::make_tuple(std::make_tuple(get_v(0, 0, data_views),
         //                                                                get_v(1, 0, data_views),
         //                                                                get_v(2, 0, data_views)),
         //                                                std::make_tuple(get_v(0, 1, data_views),
@@ -200,7 +200,7 @@ int main(int argc, char* argv[])
 
 
         // invert the tuple with templated functions
-        auto views_dimension_flopped = repack_views(data_views);
+        auto views_dimension_transposed = repack_views(data_views);
 
 
         auto& x_host = std::get<0>(x_views);
@@ -209,7 +209,7 @@ int main(int argc, char* argv[])
         // call the transfer data host to device
         for (size_t j_it = 0; j_it < 2; j_it++)
         {
-            transfer_data_host_to_device(j_it, views_dimension_flopped);
+            transfer_data_host_to_device(j_it, views_dimension_transposed);
         }
 
         // do some modification to the arrays
@@ -223,7 +223,7 @@ int main(int argc, char* argv[])
         // transfer back to host
         for (size_t j_it = 0; j_it < 2; j_it++)
         {
-            transfer_data_device_to_host(j_it, views_dimension_flopped);
+            transfer_data_device_to_host(j_it, views_dimension_transposed);
         }
 
 
