@@ -148,10 +148,6 @@ inline void call_kernel(KernelType& k, DeviceSelector device_selector, std::size
                        [&]<typename KernelExecutionPolicyType>(
                          KernelExecutionPolicyType& range_policy_device)
             {
-#if 0
-                std::cout << "    Executing: " << prettytypename<KernelExecutionPolicyType>()
-                          << std::endl;
-#endif
                 call_kernel<KernelType::rank>(k.kernel_name_,
                                               range_policy_device,
                                               std::get<1>(k.data_views_),
