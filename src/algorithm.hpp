@@ -7,6 +7,7 @@
 
 #include <functional>
 #include <iomanip>
+#include <limits>
 #include <set>
 #include <stdexcept>
 
@@ -31,6 +32,7 @@ class Algorithm
         });
 
         build_graph();
+        build_expanded_chains();
     };
     ~Algorithm() {};
 
@@ -161,6 +163,8 @@ class Algorithm
         // kernel
         size_t kernel_id;             // index of the kernel in the original tuple
         DeviceSelector kernel_device; // device this kernel will run on
+        size_t kernel_n_options; // the number of options in the kernel (currently corresponds to
+                                 // Kokkos LaunchBounds)
 
         // data
         std::vector<size_t> input_id              = std::vector<size_t>();
@@ -174,6 +178,13 @@ class Algorithm
     std::vector<uint32_t> chains_total_output_transfers_d2h;
     std::vector<uint32_t> chains_total_input_transfers_h2d;
     std::vector<uint32_t> chains_total_output_transfers_h2d;
+
+    struct KernelWithOptionsSelector
+    {
+        size_t original_chain_kd;
+        size_t kernel_option_id;
+        std::vector<size_t> kernel_option_ids = std::vector<size_t>();
+    };
 
   public:
     // data dependencies define kernel dependencies
@@ -195,6 +206,13 @@ class Algorithm
     // NOTE right now we always assume kernels are executed in a sequence
     //   however, in the future this could be expanded to allow concurrency of independent subchains
     std::vector<std::vector<KernelSelector>> kernel_chains;
+    // to go hand and hand with chains, we need to know which
+    std::vector<std::size_t> kernel_chain_device_vals;
+
+    using PermutationStorageType = std::vector<std::vector<std::size_t>>;
+    std::vector<PermutationStorageType> kernel_chain_device_permutations;
+    std::size_t total_num_permutations = 0;
+    std::vector<std::size_t> kernel_chain_device_permutations_bounds;
 
     // Storage vectors for our profiling results. Note that they're all resized to the proper chain
     // lengths
@@ -442,6 +460,23 @@ class Algorithm
             devices.push_back(k.options_.devices);
         });
 
+
+        // then iterate over the kernels to grab how many additinal IDs to grab with parameters
+        iter_tuple(kernels_,
+                   [&]<typename KernelType>(size_t i_kernel, KernelType& k_temp)
+        {
+            // get the number of device execution policies that are stored for this kernel
+            kernel_chain_device_vals.push_back(k_temp.n_device_execution_policies_);
+        });
+
+        std::cout << "Kernel device chain sizes: ";
+        for (auto& ii : kernel_chain_device_vals)
+        {
+            std::cout << " " << ii;
+        }
+        std::cout << std::endl;
+
+
         // init kernel execution chains
         for (auto& kseq : kernel_sequences)
         {
@@ -677,7 +712,7 @@ class Algorithm
                     }
                 }
 
-#ifdef DYNTUNE_DEBUG_ENABLED
+#ifdef DYNTUNE_DEBUG_ENABLED_FORCED
                 std::cout << "Chain, Kernel (" << i_chain << ", " << _il
                           << ") Output IDs (global): ";
                 for (auto opid : ksel_l.output_id)
@@ -757,6 +792,108 @@ class Algorithm
 
     } // end build_data_graph
 
+    void get_timing_index() {}
+
+    void build_expanded_chains()
+    {
+        // we need to calculate how many total options we're dealing with, and that includes
+        // knowing how many options there are, so we need to iterate over the chains themselves and
+        // then verify some things
+
+        uint32_t total_chains = 0;
+
+        std::vector<std::vector<KernelWithOptionsSelector>> true_selection;
+
+        for (uint32_t i_chain : kernel_chain_ids)
+        { // chain loop
+            std::vector<KernelSelector>& kernel_chain = kernel_chains[i_chain];
+
+            std::vector<std::vector<size_t>> temp;
+
+            for (KernelSelector ksel : kernel_chain)
+            { // loop through the kernels themselves
+                size_t k_id                  = ksel.kernel_id;
+                DeviceSelector kernel_device = ksel.kernel_device;
+
+                // then based on the kernel ID, get the number of options from
+                // kernel_chain_device_vals
+                size_t n_k_options = kernel_chain_device_vals[k_id];
+
+                std::vector<size_t> other_to_fill;
+
+                if (kernel_device == DeviceSelector::DEVICE)
+                {
+                    // then check for the total number of values
+                    if (n_k_options > 1)
+                        for (uint32_t k_option = 0; k_option < n_k_options; k_option++)
+                            other_to_fill.push_back(k_option);
+                    else
+                        other_to_fill.push_back(0);
+                }
+                else
+                    other_to_fill.push_back(0);
+
+                // now we can put this on the list
+                temp.push_back(other_to_fill);
+            }
+
+            // create all possible permutations of parameters
+            using PermStorageType = std::vector<std::vector<std::size_t>>;
+            PermStorageType permutation_storage;
+
+            for (const auto& ele : temp[0])
+            {
+                permutation_storage.push_back({ ele });
+            }
+
+            for (std::size_t i_inner = 1; i_inner < temp.size(); i_inner++)
+            {
+                PermStorageType new_perm_storage;
+
+                for (const auto& comb : permutation_storage)
+                {
+                    for (const auto& ele : temp[i_inner])
+                    {
+                        std::vector<std::size_t> newComb = comb;
+                        newComb.push_back(ele);
+                        new_perm_storage.push_back(newComb);
+                    }
+                }
+
+                // make sure to update the storage by swapping!
+                permutation_storage = new_perm_storage;
+            }
+            kernel_chain_device_permutations_bounds.push_back(total_chains);
+            total_chains += permutation_storage.size();
+
+            // now we have the permutation storage all handled and taken into account
+            // just gotta store it all in the kernels so it's accessible
+            kernel_chain_device_permutations.push_back(permutation_storage);
+        }
+
+        total_num_permutations = total_chains;
+
+#if 0
+        std::cout << "ALL PERMUTATIONS: " << std::endl;
+        for (const auto& aa : kernel_chain_device_permutations)
+        {
+            std::cout << "New Chain: ";
+            for (const auto& bb : aa)
+            {
+                for (const auto& cc : bb)
+                {
+                    std::cout << cc << " ";
+                }
+                std::cout << ", ";
+            }
+            std::cout << std::endl;
+        }
+        std::cout << "Calculated number of total permutations across all chains: "
+                  << total_num_permutations << std::endl;
+#endif
+        std::cout << "Notice: We've discovered **" << total_num_permutations
+                  << "** total permutations1" << std::endl;
+    }
 
   public:
     void operator()()
@@ -766,6 +903,9 @@ class Algorithm
 #ifdef DYNTUNE_ENABLE_ORDER_SHUFFLE
         // std::cout << "Shuffling kernel chains..." << std::endl;
         std::random_shuffle(kernel_chain_ids.begin(), kernel_chain_ids.end());
+
+        // we can also shuffle all of the different permutations as well, maybe want an ID for both?
+        // TODO:
 #endif
 
 #if DEBUG_ENABLED
@@ -778,12 +918,16 @@ class Algorithm
 #endif
 
         // set up the execution time vector, if the size isn't already correct
-        if (chain_times.size() != kernel_chains.size())
-            chain_times.resize(kernel_chains.size(), 0.0);
+        // if (chain_times.size() != kernel_chains.size())
+        //     chain_times.resize(kernel_chains.size(), 0.0);
+        if (chain_times.size() != total_num_permutations)
+            chain_times.resize(total_num_permutations, 0.0);
 
         // same with full elapsed times
-        if (chain_elapsed_times.size() != kernel_chains.size())
-            chain_elapsed_times.resize(kernel_chains.size(), 0.0);
+        // if (chain_elapsed_times.size() != kernel_chains.size())
+        //     chain_elapsed_times.resize(kernel_chains.size(), 0.0);
+        if (chain_elapsed_times.size() != total_num_permutations)
+            chain_elapsed_times.resize(total_num_permutations, 0.0);
 
         // 0: loop over kernel chains
         // for (std::vector<KernelSelector> kernel_chain : kernel_chains)
@@ -799,114 +943,129 @@ class Algorithm
 #endif
             std::vector<KernelSelector> kernel_chain = kernel_chains[i_chain];
 
-            for (int i_run = 0; i_run < chain_runs; i_run++)
+            // then iterate over the number of permutations
+            for (int i_perm = 0; i_perm < kernel_chain_device_permutations[i_chain].size();
+                 i_perm++)
             {
+                auto perm = kernel_chain_device_permutations[i_chain][i_perm];
+                // then figure out which main ID we're at to know where to store the timer
+                // information
+                std::size_t perm_main_id =
+                  kernel_chain_device_permutations_bounds[i_chain] + i_perm;
 
-                // init timer
-                double elapsed = 0.0;
-                Kokkos::Timer timer;
-                Kokkos::Timer timer_all;
-                timer_all.reset(); // start the timer
+                for (int i_run = 0; i_run < chain_runs; i_run++)
+                {
+                    // init timer
+                    double elapsed = 0.0;
+                    Kokkos::Timer timer;
+                    Kokkos::Timer timer_all;
+                    timer_all.reset(); // start the timer
 
-                // first selector may need to copy inputs
-                bool first = true;
+                    // first selector may need to copy inputs
+                    bool first = true;
 
-                // trackers for input and output transfers of data
-                uint32_t tracked_input_transfers  = 0;
-                uint32_t tracked_output_transfers = 0;
+                    // trackers for input and output transfers of data
+                    uint32_t tracked_input_transfers  = 0;
+                    uint32_t tracked_output_transfers = 0;
 
-                // 1: iterate through the chain
-                for (KernelSelector ksel : kernel_chain)
-                { // ksel, i
+                    // 1: iterate through the chain
+                    for (KernelSelector ksel : kernel_chain)
+                    { // ksel, i
 
-                    size_t i                     = ksel.kernel_id;
-                    DeviceSelector kernel_device = ksel.kernel_device;
+                        size_t i                     = ksel.kernel_id;
+                        DeviceSelector kernel_device = ksel.kernel_device;
 
-                    // 2: find this kernel
-                    find_tuple(kernels_,
-                               i,
-                               [&]<typename KernelType>(KernelType& k) { // k
-                        // get the data views
-                        auto views_h = std::get<0>(k.data_views_);
-                        auto views_d = std::get<1>(k.data_views_);
+                        // 2: find this kernel
+                        find_tuple(kernels_,
+                                   i,
+                                   [&]<typename KernelType>(KernelType& k) { // k
+                            // get the data views
+                            auto views_h = std::get<0>(k.data_views_);
+                            auto views_d = std::get<1>(k.data_views_);
 
-                        do_input_data_transfer(ksel,
-                                               k,
-                                               i,
-                                               kernel_device,
-                                               elapsed,
-                                               timer,
-                                               tracked_input_transfers,
-                                               i_chain);
+                            do_input_data_transfer(ksel,
+                                                   k,
+                                                   i,
+                                                   kernel_device,
+                                                   elapsed,
+                                                   timer,
+                                                   tracked_input_transfers,
+                                                   i_chain);
 
-                        // execute the kernel
-                        timer.reset(); // start the timer
-                        k(kernel_device);
-                        elapsed += timer.seconds();
+                            // execute the kernel
+                            timer.reset(); // start the timer
+                            // then don't forget to run the kernel at the perm ID
+                            k(kernel_device, perm[i]);
+                            elapsed += timer.seconds();
 
-                        // copy outputs
-                        do_output_data_transfer(ksel,
-                                                k,
-                                                i,
-                                                kernel_device,
-                                                elapsed,
-                                                timer,
-                                                tracked_input_transfers,
-                                                i_chain);
-
-
-                    }); // 2
-
-                } // 1
-
-                // store the execution times in the vectors
-                double chain_time = timer_all.seconds();
-                chain_times[i_chain] += chain_time;
-                chain_elapsed_times[i_chain] += elapsed;
+                            // copy outputs
+                            do_output_data_transfer(ksel,
+                                                    k,
+                                                    i,
+                                                    kernel_device,
+                                                    elapsed,
+                                                    timer,
+                                                    tracked_input_transfers,
+                                                    i_chain);
 
 
-                // execute the validation function (could be null)
+                        }); // 2
+
+                    } // 1
+
+                    // store the execution times in the vectors
+                    double chain_time = timer_all.seconds();
+                    // chain_times[i_chain] += chain_time;
+                    // chain_elapsed_times[i_chain] += elapsed;
+                    chain_times[perm_main_id] += chain_time;
+                    chain_elapsed_times[perm_main_id] += elapsed;
+
+
+                    // execute the validation function (could be null)
 #ifdef DYTUNE_DEBUG_ENABLED
-                std::cout << "Finished chain " << i_chain << std::endl;
-                std::cout << "Expected transfers (d2h), input: "
-                          << chains_total_input_transfers_d2h[i_chain]
-                          << " output: " << chains_total_output_transfers_d2h[i_chain] << std::endl;
-                std::cout << "Expected transfers (h2d), input: "
-                          << chains_total_input_transfers_h2d[i_chain]
-                          << " output: " << chains_total_output_transfers_h2d[i_chain] << std::endl;
-                std::cout << "Tracked transfers, input: " << tracked_input_transfers
-                          << " output: " << tracked_output_transfers << std::endl;
+                    std::cout << "Finished chain " << i_chain << std::endl;
+                    std::cout << "Expected transfers (d2h), input: "
+                              << chains_total_input_transfers_d2h[i_chain]
+                              << " output: " << chains_total_output_transfers_d2h[i_chain]
+                              << std::endl;
+                    std::cout << "Expected transfers (h2d), input: "
+                              << chains_total_input_transfers_h2d[i_chain]
+                              << " output: " << chains_total_output_transfers_h2d[i_chain]
+                              << std::endl;
+                    std::cout << "Tracked transfers, input: " << tracked_input_transfers
+                              << " output: " << tracked_output_transfers << std::endl;
 #endif
 
-                { // debug print
-                    /*
-                    bool success = true;
-                    for (KernelSelector ksel : kernel_chain) {
-                        for (size_t j : ksel.output_id) {
-    //if (j > 4) continue;
-                            iter_tuple(views_, [&]<typename ViewType>(size_t _j, ViewType& _views) {
-    if (_j == j)
-                            {
-                                auto view = std::get<0>(_views);
-                                //if (view.rank() == 1) {
-                                    auto N = view.extent(0);
-                                    //printf("\n");
-                                    for (auto i = 0; i < N; i++) {
-                                        //printf("[%d,0,%d] %f\n", j, i, view(i));
-                                        if (view(i) == 0) success = false;
-                                    }
-                                //}
-                            }});
+                    { // debug print
+                        /*
+                        bool success = true;
+                        for (KernelSelector ksel : kernel_chain) {
+                            for (size_t j : ksel.output_id) {
+        //if (j > 4) continue;
+                                iter_tuple(views_, [&]<typename ViewType>(size_t _j, ViewType&
+        _views) { if (_j == j)
+                                {
+                                    auto view = std::get<0>(_views);
+                                    //if (view.rank() == 1) {
+                                        auto N = view.extent(0);
+                                        //printf("\n");
+                                        for (auto i = 0; i < N; i++) {
+                                            //printf("[%d,0,%d] %f\n", j, i, view(i));
+                                            if (view(i) == 0) success = false;
+                                        }
+                                    //}
+                                }});
+                            }
                         }
+                        printf("RESULT: time=%f, success=%s\n", chain_time, (success) ? "true" :
+        "false");
+                        */
+                        // printf("RESULT: ops=%f, all=%f\n", elapsed, chain_time);
                     }
-                    printf("RESULT: time=%f, success=%s\n", chain_time, (success) ? "true" :
-    "false");
-                    */
-                    // printf("RESULT: ops=%f, all=%f\n", elapsed, chain_time);
-                }
 
-                // run a stored validation function provided by the user
-                validation_function();
+                    // run a stored validation function provided by the user
+                    validation_function();
+                }
             }
 
         } // 0
@@ -915,38 +1074,58 @@ class Algorithm
 
     } // end operator()
 
-    void print_results(bool sort_results = true)
+    void print_results(bool sort_results    = true,
+                       std::size_t truncate = std::numeric_limits<std::size_t>::max(),
+                       std::ostream& outs   = std::cout)
     {
         // this just goes through the kernels and prints the timing results
-        std::cout << "==========================" << std::endl;
-        std::cout << "===== Timing results =====" << std::endl << std::endl;
+        outs << "==========================" << std::endl;
+        outs << "===== Timing results =====" << std::endl << std::endl;
 
-        std::cout << "Total number of chains run: " << kernel_chain_ids.size() << std::endl;
-        std::cout << "Number of times run: " << total_operations_run << std::endl;
-        std::cout << "Number of times each chain run: " << chain_runs << std::endl;
-        std::cout << "Total number of times run: " << total_operations_run * chain_runs
-                  << std::endl;
+        outs << "Total number of chains run: " << kernel_chain_ids.size() << std::endl;
+        outs << "Total number of permutations: " << total_num_permutations << std::endl;
+        outs << "Number of times run: " << total_operations_run << std::endl;
+        outs << "Number of times each chain run: " << chain_runs << std::endl;
+        outs << "Total number of times run: " << total_operations_run * chain_runs << std::endl;
 
 
-        std::cout << "Profiling results (avg): (chain_id, ops_time, total_time):" << std::endl;
+        outs << "Profiling results (avg): (chain_id, ops_time, total_time):" << std::endl;
 
         if (sort_results)
         {
-            std::vector<size_t> sorted_ids(kernel_chains.size());
+            // std::vector<size_t> sorted_ids(kernel_chains.size());
+            // std::iota(sorted_ids.begin(), sorted_ids.end(), 0);
+
+            std::vector<size_t> sorted_ids(total_num_permutations);
             std::iota(sorted_ids.begin(), sorted_ids.end(), 0);
 
             std::stable_sort(sorted_ids.begin(), sorted_ids.end(), [this](size_t i1, size_t i2) {
                 return this->chain_times[i1] < this->chain_times[i2];
             });
 
-            for (auto i_chain : sorted_ids)
+            std::size_t num_to_print = sorted_ids.size();
+            if (num_to_print > 25)
             {
-                double chain_time = chain_times[i_chain] / total_operations_run / chain_runs;
+                num_to_print = 25;
+            }
+
+            for (std::size_t ii = 0; ii < num_to_print; ii++)
+            {
+                std::size_t i_chain = sorted_ids[ii];
+                double chain_time   = chain_times[i_chain] / total_operations_run / chain_runs;
                 double total_time =
                   chain_elapsed_times[i_chain] / total_operations_run / chain_runs;
-                std::cout << "Chain " << std::setw(4) << i_chain << "\t" << std::scientific
-                          << chain_time << "\t" << total_time << std::endl;
+                outs << "Chain " << std::setw(4) << i_chain << "\t" << std::scientific << chain_time
+                     << "\t" << total_time << std::endl;
             }
+            // for (auto i_chain : sorted_ids)
+            // {
+            //     double chain_time = chain_times[i_chain] / total_operations_run / chain_runs;
+            //     double total_time =
+            //       chain_elapsed_times[i_chain] / total_operations_run / chain_runs;
+            //     outs << "Chain " << std::setw(4) << i_chain << "\t" << std::scientific
+            //               << chain_time << "\t" << total_time << std::endl;
+            // }
         }
         else
         {
@@ -955,12 +1134,12 @@ class Algorithm
                 double chain_time = chain_times[i_chain] / total_operations_run / chain_runs;
                 double total_time =
                   chain_elapsed_times[i_chain] / total_operations_run / chain_runs;
-                std::cout << "Chain " << std::setw(4) << i_chain << "\t" << std::scientific
-                          << chain_time << "\t" << total_time << std::endl;
+                outs << "Chain " << std::setw(4) << i_chain << "\t" << std::scientific << chain_time
+                     << "\t" << total_time << std::endl;
             }
         }
 
-        std::cout << std::endl << "==========================" << std::endl;
+        outs << std::endl << "==========================" << std::endl;
     }
 
     template<typename KernelType>
@@ -1020,7 +1199,7 @@ class Algorithm
             if (skip_transfer)
             {
 
-#ifdef DYNTUNE_DEBUG_ENABLED
+#ifdef DYNTUNE_DEBUG_ENABLED_OFF
                 std::cout << "chain_" << chain_id << ": Kernel " << kernel_id
                           << " reporting that it's *NOT* copying data: " << j_local << " (global "
                           << j_global << ")" << std::endl;
