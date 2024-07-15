@@ -11,6 +11,9 @@
 #include "kernel_matvecmult.hpp"
 #include "kernel_vectordot.hpp"
 
+#include <fstream>
+#include <istream>
+
 /*
 #define init_data_views(...) \
     auto data_views = create_views(pack(__VA_ARGS__));
@@ -35,12 +38,13 @@ int main(int argc, char* argv[])
     // seed any randomization!
     std::srand(unsigned(std::time(0)));
 
-    DeviceSelector device = set_device(argc, argv);
-    int N                 = set_N(argc, argv);
-    bool reordering       = set_reordering(argc, argv);
-    bool initialize       = set_initialize(argc, argv);
-    int num_sims          = set_num_sims(argc, argv);
-    int num_chain_runs    = set_num_chain_runs(argc, argv);
+    DeviceSelector device   = set_device(argc, argv);
+    int N                   = set_N(argc, argv);
+    bool reordering         = set_reordering(argc, argv);
+    bool initialize         = set_initialize(argc, argv);
+    int num_sims            = set_num_sims(argc, argv);
+    int num_chain_runs      = set_num_chain_runs(argc, argv);
+    int num_output_truncate = set_num_output_truncate(argc, argv);
 
 #ifdef DYNTUNE_SINGLE_CHAIN_RUN
     unsigned int single_chain = set_single_chain_run(argc, argv);
@@ -181,12 +185,13 @@ int main(int argc, char* argv[])
                                   z_views); // VectorDot
 
         // register all kernels info an Algorithm
-        auto kernels = pack(k1, k2, k3, k4);
+        // auto kernels = pack(k1, k2, k3, k4);
         printf("\nbuilding algorithm\n");
-        // auto kernels = pack(k1, k3, k4);
+        auto kernels = pack(k1, k3, k4);
         // auto kernels = pack(k2);
         Algorithm algo(kernels, data_views, reordering);
         algo.set_num_chain_runs(num_chain_runs);
+
 
 
 #ifdef DYNTUNE_SINGLE_CHAIN_RUN
@@ -195,7 +200,7 @@ int main(int argc, char* argv[])
 
         algo.set_validation_function([&s, &w, &z, &s_truth, &w_truth, &z_truth, &N]()
         {
-#ifdef DYNTUNE_DEBUG_ENABLED
+#ifdef DYNTUNE_DEBUG_ENABLED_TEST
             std::cout << "Inside validation function! " << std::endl;
 
             double abs_difference = 0.0;
@@ -243,12 +248,19 @@ int main(int argc, char* argv[])
 
         double progress = 0.0;
 
+        printf("Running algorithm %d times...", num_sims);
         for (size_t ii = 0; ii < num_sims; ii++)
             algo();
 
         std::cout << std::endl;
 
-        algo.print_results();
+        algo.print_results(true, true, num_output_truncate, std::cout);
+
+        // open up a file
+        std::ofstream fileStream;
+        fileStream.open("sample.csv");
+        algo.print_results(true, true, std::numeric_limits<std::size_t>::max(), fileStream);
+        fileStream.close();
 
         // TESTS
         // TestVectorDot(k1, q, r, s);

@@ -871,6 +871,7 @@ class Algorithm
             kernel_chain_device_permutations.push_back(permutation_storage);
         }
 
+        kernel_chain_device_permutations_bounds.push_back(total_chains);
         total_num_permutations = total_chains;
 
 #if 0
@@ -1075,10 +1076,18 @@ class Algorithm
     } // end operator()
 
     void print_results(bool sort_results    = true,
+                       bool csv_format      = true,
                        std::size_t truncate = std::numeric_limits<std::size_t>::max(),
                        std::ostream& outs   = std::cout)
     {
         // this just goes through the kernels and prints the timing results
+
+        if (csv_format)
+        {
+            outs << "speedRank,mainID,chainID,hyperparamID,opsTime,totalTime\n";
+        }
+        else
+        {
         outs << "==========================" << std::endl;
         outs << "===== Timing results =====" << std::endl << std::endl;
 
@@ -1090,55 +1099,71 @@ class Algorithm
 
 
         outs << "Profiling results (avg): (chain_id, ops_time, total_time):" << std::endl;
+        }
 
-        if (sort_results)
-        {
             // std::vector<size_t> sorted_ids(kernel_chains.size());
             // std::iota(sorted_ids.begin(), sorted_ids.end(), 0);
 
+        // now we iterate through and sort the results
             std::vector<size_t> sorted_ids(total_num_permutations);
             std::iota(sorted_ids.begin(), sorted_ids.end(), 0);
 
+        // if sort, then stable sort
+        if (sort_results)
+        {
             std::stable_sort(sorted_ids.begin(), sorted_ids.end(), [this](size_t i1, size_t i2) {
                 return this->chain_times[i1] < this->chain_times[i2];
             });
+        }
 
+        // now we can go through the results based on the ID
             std::size_t num_to_print = sorted_ids.size();
-            if (num_to_print > 25)
+        if (num_to_print > truncate)
             {
-                num_to_print = 25;
+            num_to_print = truncate;
             }
+
 
             for (std::size_t ii = 0; ii < num_to_print; ii++)
             {
                 std::size_t i_chain = sorted_ids[ii];
                 double chain_time   = chain_times[i_chain] / total_operations_run / chain_runs;
-                double total_time =
-                  chain_elapsed_times[i_chain] / total_operations_run / chain_runs;
-                outs << "Chain " << std::setw(4) << i_chain << "\t" << std::scientific << chain_time
-                     << "\t" << total_time << std::endl;
+            double total_time   = chain_elapsed_times[i_chain] / total_operations_run / chain_runs;
+
+            // given i_chain, we can calculate which actual kernel it is
+            std::size_t the_chain  = 0;
+            std::size_t the_launch = 0;
+
+            for (int itemp = 0; itemp < kernel_chain_device_permutations_bounds.size() - 1; itemp++)
+            {
+                const std::size_t& bound_temp_low = kernel_chain_device_permutations_bounds[itemp];
+                const std::size_t& bound_temp_up =
+                  kernel_chain_device_permutations_bounds[itemp + 1];
+
+                if (i_chain >= bound_temp_low && i_chain < bound_temp_up)
+                {
+                    the_chain = itemp;
+                }
             }
-            // for (auto i_chain : sorted_ids)
-            // {
-            //     double chain_time = chain_times[i_chain] / total_operations_run / chain_runs;
-            //     double total_time =
-            //       chain_elapsed_times[i_chain] / total_operations_run / chain_runs;
-            //     outs << "Chain " << std::setw(4) << i_chain << "\t" << std::scientific
-            //               << chain_time << "\t" << total_time << std::endl;
-            // }
+
+            // now that we have the chain ID, we can calculate the hyperparameter opbtion
+            std::size_t hyperparam_id =
+              i_chain - kernel_chain_device_permutations_bounds[the_chain];
+
+            if (csv_format)
+            {
+                outs << ii << "," << i_chain << "," << the_chain << "," << hyperparam_id << ","
+                     << chain_time << "," << total_time << "\n";
         }
         else
         {
-            for (size_t i_chain = 0; i_chain < kernel_chains.size(); i_chain++)
-            {
-                double chain_time = chain_times[i_chain] / total_operations_run / chain_runs;
-                double total_time =
-                  chain_elapsed_times[i_chain] / total_operations_run / chain_runs;
-                outs << "Chain " << std::setw(4) << i_chain << "\t" << std::scientific << chain_time
-                     << "\t" << total_time << std::endl;
+                outs << std::setw(4) << ii << "  ID: " << std::setw(5) << i_chain
+                     << "  Chain: " << the_chain << "  Hyper: " << hyperparam_id << "\t"
+                     << std::scientific << chain_time << "\t" << total_time << std::endl;
             }
         }
 
+        if (!csv_format)
         outs << std::endl << "==========================" << std::endl;
     }
 

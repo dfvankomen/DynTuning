@@ -236,6 +236,21 @@ inline int set_num_chain_runs(int argc, char* argv[])
     return N;
 }
 
+inline int set_num_output_truncate(int argc, char* argv[])
+{
+    int N = 25;
+    for (int i = 0; i < argc; i++)
+    {
+        std::string arg = argv[i];
+        if (arg.find("--output_truncate=") == 0)
+        {
+            N = std::atoi(arg.substr(18).c_str());
+            break;
+        }
+    }
+    std::cout << "output_truncate = " << N << std::endl;
+    return N;
+}
 
 #ifdef DYNTUNE_SINGLE_CHAIN_RUN
 inline unsigned int set_single_chain_run(int argc, char* argv[])
