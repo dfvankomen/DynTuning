@@ -930,6 +930,8 @@ class Algorithm
         if (chain_elapsed_times.size() != total_num_permutations)
             chain_elapsed_times.resize(total_num_permutations, 0.0);
 
+        std::size_t curr_run_num = 0;
+
         // 0: loop over kernel chains
         // for (std::vector<KernelSelector> kernel_chain : kernel_chains)
         for (uint32_t i_chain : kernel_chain_ids)
@@ -948,6 +950,16 @@ class Algorithm
             for (int i_perm = 0; i_perm < kernel_chain_device_permutations[i_chain].size();
                  i_perm++)
             {
+
+#ifdef DYNTUNE_DEBUG_ENABLED_OFF
+                if (curr_run_num % 20000 == 0)
+                {
+                    std::cout << "  On " << curr_run_num << "/" << total_num_permutations
+                              << std::endl;
+                }
+#endif
+                curr_run_num++;
+
                 auto perm = kernel_chain_device_permutations[i_chain][i_perm];
                 // then figure out which main ID we're at to know where to store the timer
                 // information
@@ -1088,25 +1100,25 @@ class Algorithm
         }
         else
         {
-        outs << "==========================" << std::endl;
-        outs << "===== Timing results =====" << std::endl << std::endl;
+            outs << "==========================" << std::endl;
+            outs << "===== Timing results =====" << std::endl << std::endl;
 
-        outs << "Total number of chains run: " << kernel_chain_ids.size() << std::endl;
-        outs << "Total number of permutations: " << total_num_permutations << std::endl;
-        outs << "Number of times run: " << total_operations_run << std::endl;
-        outs << "Number of times each chain run: " << chain_runs << std::endl;
-        outs << "Total number of times run: " << total_operations_run * chain_runs << std::endl;
+            outs << "Total number of chains run: " << kernel_chain_ids.size() << std::endl;
+            outs << "Total number of permutations: " << total_num_permutations << std::endl;
+            outs << "Number of times run: " << total_operations_run << std::endl;
+            outs << "Number of times each chain run: " << chain_runs << std::endl;
+            outs << "Total number of times run: " << total_operations_run * chain_runs << std::endl;
 
 
-        outs << "Profiling results (avg): (chain_id, ops_time, total_time):" << std::endl;
+            outs << "Profiling results (avg): (chain_id, ops_time, total_time):" << std::endl;
         }
 
-            // std::vector<size_t> sorted_ids(kernel_chains.size());
-            // std::iota(sorted_ids.begin(), sorted_ids.end(), 0);
+        // std::vector<size_t> sorted_ids(kernel_chains.size());
+        // std::iota(sorted_ids.begin(), sorted_ids.end(), 0);
 
         // now we iterate through and sort the results
-            std::vector<size_t> sorted_ids(total_num_permutations);
-            std::iota(sorted_ids.begin(), sorted_ids.end(), 0);
+        std::vector<size_t> sorted_ids(total_num_permutations);
+        std::iota(sorted_ids.begin(), sorted_ids.end(), 0);
 
         // if sort, then stable sort
         if (sort_results)
@@ -1117,17 +1129,17 @@ class Algorithm
         }
 
         // now we can go through the results based on the ID
-            std::size_t num_to_print = sorted_ids.size();
+        std::size_t num_to_print = sorted_ids.size();
         if (num_to_print > truncate)
-            {
+        {
             num_to_print = truncate;
-            }
+        }
 
 
-            for (std::size_t ii = 0; ii < num_to_print; ii++)
-            {
-                std::size_t i_chain = sorted_ids[ii];
-                double chain_time   = chain_times[i_chain] / total_operations_run / chain_runs;
+        for (std::size_t ii = 0; ii < num_to_print; ii++)
+        {
+            std::size_t i_chain = sorted_ids[ii];
+            double chain_time   = chain_times[i_chain] / total_operations_run / chain_runs;
             double total_time   = chain_elapsed_times[i_chain] / total_operations_run / chain_runs;
 
             // given i_chain, we can calculate which actual kernel it is
@@ -1154,9 +1166,9 @@ class Algorithm
             {
                 outs << ii << "," << i_chain << "," << the_chain << "," << hyperparam_id << ","
                      << chain_time << "," << total_time << "\n";
-        }
-        else
-        {
+            }
+            else
+            {
                 outs << std::setw(4) << ii << "  ID: " << std::setw(5) << i_chain
                      << "  Chain: " << the_chain << "  Hyper: " << hyperparam_id << "\t"
                      << std::scientific << chain_time << "\t" << total_time << std::endl;
@@ -1164,7 +1176,7 @@ class Algorithm
         }
 
         if (!csv_format)
-        outs << std::endl << "==========================" << std::endl;
+            outs << std::endl << "==========================" << std::endl;
     }
 
     template<typename KernelType>
