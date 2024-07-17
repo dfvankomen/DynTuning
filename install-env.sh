@@ -29,16 +29,30 @@ if [[ ! -d "${KOKKOS_HOME}" ]]; then
   rm -rf build
   mkdir build
   cd build
+  # cmake ../ \
+  #   -DCMAKE_CXX_COMPILER="${CXX}" \
+  #   -DCMAKE_INSTALL_PREFIX="${KOKKOS_HOME}" \
+  #   -DKokkos_ENABLE_SERIAL=ON \
+  #   "-DKokkos_ARCH_${CPU_ARCH}=ON" \
+  #   -DKokkos_ENABLE_CUDA=ON \
+  #   -DKokkos_ENABLE_CUDA_LAMBDA=ON \
+  #   -DKokkos_ENABLE_CUDA_CONSTEXPR=ON \
+  #   "-DKokkos_ARCH_${GPU_ARCH}=ON" \
+  #   -DKokkos_CUDA_DIR="${CUDA_HOME}"
+
+  # OpenMP Version of the Install
   cmake ../ \
     -DCMAKE_CXX_COMPILER="${CXX}" \
     -DCMAKE_INSTALL_PREFIX="${KOKKOS_HOME}" \
-    -DKokkos_ENABLE_SERIAL=ON \
+    -DKokkos_ENABLE_OPENMP=ON \
     "-DKokkos_ARCH_${CPU_ARCH}=ON" \
     -DKokkos_ENABLE_CUDA=ON \
     -DKokkos_ENABLE_CUDA_LAMBDA=ON \
     -DKokkos_ENABLE_CUDA_CONSTEXPR=ON \
     "-DKokkos_ARCH_${GPU_ARCH}=ON" \
     -DKokkos_CUDA_DIR="${CUDA_HOME}"
+
+  # then run the make to actually build it!
   make -j "${MAKE_NPROCS}" install
 fi
 

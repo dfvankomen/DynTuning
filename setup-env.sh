@@ -58,7 +58,9 @@ elif [[ "${1}" == "googlecloud" ]]; then
   export PATH="${KOKKOS_KERNELS_HOME}/bin:${PATH}"
   
   # set the Kokkos_ARCH values
-  export CPU_ARCH=SKX
+  # export CPU_ARCH=SKX
+  # DVK: the arch I have on Google is a Haswell Xeon INtel CPU
+  export CPU_ARCH=HSW
   export GPU_ARCH=TURING75
 
   # set number of processors to use for compiling
