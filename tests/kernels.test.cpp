@@ -58,7 +58,12 @@ TEST_CASE("Kernel: Verify VectorDot Host and Device", "kernel")
         KernelOptions options = { { DeviceSelector::HOST, DeviceSelector::DEVICE } };
 
         // build the kernel
-        auto k = KernelVectorDot(options, std::as_const(a_views), std::as_const(b_views), c_views);
+        using ChosenLinspace        = NoOptions;
+        using KernelHyperparameters = HyperparameterOptions<ChosenLinspace>;
+        auto k                      = KernelVectorDot<KernelHyperparameters>(options,
+                                                        std::as_const(a_views),
+                                                        std::as_const(b_views),
+                                                        c_views);
 
         // then run the kernel, starting on the host
         k(DeviceSelector::HOST);
@@ -147,7 +152,12 @@ TEST_CASE("Kernel: Verify MatVecMult Host and Device", "kernel")
         KernelOptions options = { { DeviceSelector::HOST, DeviceSelector::DEVICE } };
 
         // build the kernel
-        auto k = KernelMatVecMult(options, std::as_const(A_views), std::as_const(b_views), c_views);
+        using ChosenLinspace        = NoOptions;
+        using KernelHyperparameters = HyperparameterOptions<ChosenLinspace>;
+        auto k                      = KernelMatVecMult<KernelHyperparameters>(options,
+                                                         std::as_const(A_views),
+                                                         std::as_const(b_views),
+                                                         c_views);
 
         // then run the kernel, starting on the host
         k(DeviceSelector::HOST);
@@ -232,7 +242,12 @@ TEST_CASE("Kernel: Verify MatVecMult Non-Square Host and Device", "kernel")
         KernelOptions options = { { DeviceSelector::HOST, DeviceSelector::DEVICE } };
 
         // build the kernel
-        auto k = KernelMatVecMult(options, std::as_const(A_views), std::as_const(b_views), c_views);
+        using ChosenLinspace        = NoOptions;
+        using KernelHyperparameters = HyperparameterOptions<ChosenLinspace>;
+        auto k                      = KernelMatVecMult<KernelHyperparameters>(options,
+                                                         std::as_const(A_views),
+                                                         std::as_const(b_views),
+                                                         c_views);
 
         // then run the kernel, starting on the host
         k(DeviceSelector::HOST);
@@ -313,8 +328,12 @@ TEST_CASE("Kernel: Verify Square VectorOuter Host and Device", "kernel")
         KernelOptions options = { { DeviceSelector::HOST, DeviceSelector::DEVICE } };
 
         // build the kernel
-        auto k =
-          KernelVectorOuter(options, std::as_const(a_views), std::as_const(b_views), C_views);
+        using ChosenLinspace        = NoOptions;
+        using KernelHyperparameters = HyperparameterOptions<ChosenLinspace>;
+        auto k                      = KernelVectorOuter<KernelHyperparameters>(options,
+                                                          std::as_const(a_views),
+                                                          std::as_const(b_views),
+                                                          C_views);
 
         // then run the kernel, starting on the host
         k(DeviceSelector::HOST);
@@ -401,8 +420,12 @@ TEST_CASE("Kernel: Verify Non-Square VectorOuter Host and Device", "kernel")
         KernelOptions options = { { DeviceSelector::HOST, DeviceSelector::DEVICE } };
 
         // build the kernel
-        auto k =
-          KernelVectorOuter(options, std::as_const(a_views), std::as_const(b_views), C_views);
+        using ChosenLinspace        = NoOptions;
+        using KernelHyperparameters = HyperparameterOptions<ChosenLinspace>;
+        auto k                      = KernelVectorOuter<KernelHyperparameters>(options,
+                                                          std::as_const(a_views),
+                                                          std::as_const(b_views),
+                                                          C_views);
 
         // then run the kernel, starting on the host
         k(DeviceSelector::HOST);
@@ -499,7 +522,12 @@ TEST_CASE("Kernel: Verify Square MatMatMult Host and Device", "kernel")
         KernelOptions options = { { DeviceSelector::HOST, DeviceSelector::DEVICE } };
 
         // build the kernel
-        auto k = KernelMatMatMult(options, std::as_const(A_views), std::as_const(B_views), C_views);
+        using ChosenLinspace        = NoOptions;
+        using KernelHyperparameters = HyperparameterOptions<ChosenLinspace>;
+        auto k                      = KernelMatMatMult<KernelHyperparameters>(options,
+                                                         std::as_const(A_views),
+                                                         std::as_const(B_views),
+                                                         C_views);
 
         // then run the kernel, starting on the host
         k(DeviceSelector::HOST);
@@ -596,7 +624,12 @@ TEST_CASE("Kernel: Verify Non-Square MatMatMult Host and Device", "kernel")
         KernelOptions options = { { DeviceSelector::HOST, DeviceSelector::DEVICE } };
 
         // build the kernel
-        auto k = KernelMatMatMult(options, std::as_const(A_views), std::as_const(B_views), C_views);
+        using ChosenLinspace        = NoOptions;
+        using KernelHyperparameters = HyperparameterOptions<ChosenLinspace>;
+        auto k                      = KernelMatMatMult<KernelHyperparameters>(options,
+                                                         std::as_const(A_views),
+                                                         std::as_const(B_views),
+                                                         C_views);
 
         // then run the kernel, starting on the host
         k(DeviceSelector::HOST);

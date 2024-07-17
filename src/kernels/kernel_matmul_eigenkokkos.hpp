@@ -78,6 +78,7 @@ inline auto KernelMatMulEigenKokkosKernel(KernelOptions& options, ParameterTypes
 
     // NOTE: kernel 0 cannot adjust range policy, as it is up to the user!
 
+
     return Kernel<0,
                   FunctorKernel_MatMul_Eigen_Host,
                   FunctorKernel_MatMul_Kokkos_Device,

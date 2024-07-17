@@ -53,7 +53,7 @@ struct FunctorMatMatMult_Device
 
 #define get_v(i, j, tuple) std::get<j>(std::get<i>(tuple))
 
-template<typename... ParameterTypes>
+template<typename HyperparameterConfig, typename... ParameterTypes>
 inline auto KernelMatMatMult(KernelOptions& options, ParameterTypes&... data_views)
 {
     auto name = "matrix-matrix multiply";
@@ -76,18 +76,10 @@ inline auto KernelMatMatMult(KernelOptions& options, ParameterTypes&... data_vie
 
     auto extent = range_extent({ 0, 0 }, { N, M });
 
-    // then build up the policy collection
-    auto full_policy_collection = create_range_policy_device<2>(extent);
-    auto policy_names           = create_range_policy_device_collection();
-
-    // TODO: user can adjust the policy via a similar method:
-    // TODO: probably don't need to specify the device for this function
-    // auto full_policy_collection =
-    //   create_range_policy_device<2, Kokkos::KOKKOS_DEVICE, 32, 150, 8, 1, 10, 3>(extent);
-    // using KernelLinspaceParameters = LinspaceOptions<32, 512, 2, 1, 10, 2>;
-    // auto full_policy_collection =
-    //   create_range_policy_device<2, Kokkos::KOKKOS_DEVICE, KernelLinspaceParameters>(extent);
-    // auto policy_names = create_range_policy_device_collection<KernelLinspaceParameters>();
+    // generate the policy collection based on user hyperparameters
+    auto full_policy_collection =
+      make_policy_from_hyperparameters<2, Kokkos::KOKKOS_DEVICE, HyperparameterConfig>(extent);
+    auto policy_names = make_hyperparameter_vector<HyperparameterConfig>();
 
     return Kernel<2,
                   FunctorMatMatMult_Host,

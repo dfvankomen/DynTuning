@@ -45,7 +45,7 @@ inline auto to_const_ref(T& arg, bool flag, int i, int j)
 
 #define get_v(i, j, tuple) std::get<j>(std::get<i>(tuple))
 
-template<typename... ParameterTypes>
+template<typename HyperparameterConfig, typename... ParameterTypes>
 inline auto KernelVectorDot(KernelOptions& options, ParameterTypes&... data_views)
 {
     auto name = "vector-vector multiply";
@@ -64,20 +64,11 @@ inline auto KernelVectorDot(KernelOptions& options, ParameterTypes&... data_view
     auto out    = std::get<2>(std::get<0>(views));
     auto extent = range_extent(0, out.extent(0));
 
-
-    // then build up the policy collection
-    // auto full_policy_collection = create_range_policy_device<1>(extent);
-    // auto policy_names = create_range_policy_device_collection();
-
-    // TODO: user can adjust the policy via a similar method:
-    // TODO: probably don't need to specify the device for this function
-    // auto full_policy_collection =
-    //   create_range_policy_device<1, Kokkos::KOKKOS_DEVICE, 32, 512, 20, 1, 10, 4>(extent);
-
-    using KernelLinspaceParameters = LinspaceOptions<32, 512, 2, 1, 10, 2>;
+    // generate the policy collection based on user hyperparameters
     auto full_policy_collection =
-      create_range_policy_device<1, Kokkos::KOKKOS_DEVICE, KernelLinspaceParameters>(extent);
-    auto policy_names = create_range_policy_device_collection<KernelLinspaceParameters>();
+      make_policy_from_hyperparameters<1, Kokkos::KOKKOS_DEVICE, HyperparameterConfig>(extent);
+    auto policy_names = make_hyperparameter_vector<HyperparameterConfig>();
+
 
     // create the kernel
     return Kernel<1,

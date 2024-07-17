@@ -893,7 +893,7 @@ class Algorithm
                   << total_num_permutations << std::endl;
 #endif
         std::cout << "Notice: We've discovered **" << total_num_permutations
-                  << "** total permutations1" << std::endl;
+                  << "** total permutations!" << std::endl;
     }
 
   public:

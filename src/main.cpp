@@ -167,24 +167,29 @@ int main(int argc, char* argv[])
 
         // define all kernels
         printf("\nbuilding kernels\n");
-        auto k1 = KernelVectorDot(options,
-                                  std::as_const(q_views),
-                                  std::as_const(r_views),
-                                  s_views); // VectorDot
-        auto k2 = KernelMatVecMult(options,
-                                   std::as_const(t_views),
-                                   std::as_const(r_views),
-                                   x_views); // matvecmult
-        auto k3 = KernelVectorDot(options,
-                                  std::as_const(v_views),
-                                  std::as_const(u_views),
-                                  w_views); // VectorDot
+
+        // using ChosenLinspace = LinspaceOptions<32, 512, 2, 1, 10, 2>;
+        using ChosenLinspace        = NoOptions;
+        using KernelHyperparameters = HyperparameterOptions<ChosenLinspace>;
+
+        auto k1 = KernelVectorDot<KernelHyperparameters>(options,
+                                                         std::as_const(q_views),
+                                                         std::as_const(r_views),
+                                                         s_views); // VectorDot
+        auto k2 = KernelMatVecMult<KernelHyperparameters>(options,
+                                                          std::as_const(t_views),
+                                                          std::as_const(r_views),
+                                                          x_views); // matvecmult
+        auto k3 = KernelVectorDot<KernelHyperparameters>(options,
+                                                         std::as_const(v_views),
+                                                         std::as_const(u_views),
+                                                         w_views); // VectorDot
         // auto k5 = KernelVectorDot(options, std::as_const(v_views), std::as_const(u_views),
         // w_views); // VectorDot
-        auto k4 = KernelVectorDot(options,
-                                  std::as_const(s_views),
-                                  std::as_const(y_views),
-                                  z_views); // VectorDot
+        auto k4 = KernelVectorDot<KernelHyperparameters>(options,
+                                                         std::as_const(s_views),
+                                                         std::as_const(y_views),
+                                                         z_views); // VectorDot
 
         // register all kernels info an Algorithm
         // auto kernels = pack(k1, k2, k3, k4);

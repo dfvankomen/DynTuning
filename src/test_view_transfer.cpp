@@ -102,7 +102,12 @@ int main(int argc, char* argv[])
         KernelOptions options = { { DeviceSelector::HOST, DeviceSelector::DEVICE } };
 
         // build the kernel
-        auto k = KernelMatVecMult(options, std::as_const(A_views), std::as_const(b_views), c_views);
+        using ChosenLinspace        = NoOptions;
+        using KernelHyperparameters = HyperparameterOptions<ChosenLinspace>;
+        auto k                      = KernelMatVecMult<KernelHyperparameters>(options,
+                                                         std::as_const(A_views),
+                                                         std::as_const(b_views),
+                                                         c_views);
 
         // now we have a kernel, and it's the matvec one
         // try running the kernel?

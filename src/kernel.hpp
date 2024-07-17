@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <ostream>
+#include <type_traits>
 #include <utility>
 
 struct KernelOptions
@@ -37,6 +38,13 @@ inline std::ostream& operator<<(std::ostream& os, const HyperParameterStorage& h
 }
 
 
+
+// dummy struct for no linspace options
+struct NoOptions
+{
+};
+
+
 template<unsigned int StartThreads,
          unsigned int EndThreads,
          unsigned int NThreads,
@@ -52,6 +60,37 @@ struct LinspaceOptions
     static constexpr unsigned int eblocks  = EndBlocks;
     static constexpr unsigned int nblocks  = NBlocks;
 };
+
+
+template<typename ConfigOption = NoOptions>
+struct HyperparameterOptions
+{
+    using DevicePolicyType = ConfigOption;
+};
+
+
+// substitution failure is not an error
+template<typename T>
+struct is_linspace_options : std::false_type
+{
+};
+
+
+template<unsigned int StartThreads,
+         unsigned int EndThreads,
+         unsigned int NThreads,
+         unsigned int StartBlocks,
+         unsigned int EndBlocks,
+         unsigned int NBlocks>
+struct is_linspace_options<
+  LinspaceOptions<StartThreads, EndThreads, NThreads, StartBlocks, EndBlocks, NBlocks>>
+  : std::true_type
+{
+};
+
+template<typename T>
+inline constexpr bool is_linspace_options_v = is_linspace_options<T>::value;
+
 
 //=============================================================================
 // Kernel
@@ -353,4 +392,44 @@ inline auto create_range_policy_device_collection()
 {
     // just return a vector with one type
     return std::vector<HyperParameterStorage>({ HyperParameterStorage({ 0, 0 }) });
+}
+
+template<int KernelRank, typename DeviceType, typename HyperparamType>
+constexpr auto make_policy_from_hyperparameters(const RangeExtent<KernelRank>& extent)
+{
+    using BaseType = typename HyperparamType::DevicePolicyType;
+
+    if constexpr (std::is_same_v<BaseType, NoOptions>)
+    {
+        return create_range_policy_device<KernelRank, DeviceType>(extent);
+    }
+    else if constexpr (is_linspace_options_v<BaseType>)
+    {
+        return create_range_policy_device<KernelRank, DeviceType, BaseType>(extent);
+    }
+    else
+    {
+        throw std::runtime_error(
+          "The kernel was misconfigured! Please fix the hyperparameters coming in!");
+    }
+}
+
+template<typename HyperparamType>
+constexpr auto make_hyperparameter_vector()
+{
+    using BaseType = typename HyperparamType::DevicePolicyType;
+
+    if constexpr (std::is_same_v<BaseType, NoOptions>)
+    {
+        return create_range_policy_device_collection();
+    }
+    else if constexpr (is_linspace_options_v<BaseType>)
+    {
+        return create_range_policy_device_collection<BaseType>();
+    }
+    else
+    {
+        throw std::runtime_error(
+          "The kernel was misconfigured! Please fix the hyperparameters coming in!");
+    }
 }

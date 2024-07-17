@@ -50,8 +50,16 @@ TEST_CASE("Algorithm: Test No Dependencies, No Reordering")
         }
 
         // first test is just a few VectorDot kernels that should work
-        auto k1 = KernelVectorDot(options, std::as_const(a_views), std::as_const(b_views), c_views);
-        auto k2 = KernelVectorDot(options, std::as_const(d_views), std::as_const(e_views), f_views);
+        using ChosenLinspace        = NoOptions;
+        using KernelHyperparameters = HyperparameterOptions<ChosenLinspace>;
+        auto k1                     = KernelVectorDot<KernelHyperparameters>(options,
+                                                         std::as_const(a_views),
+                                                         std::as_const(b_views),
+                                                         c_views);
+        auto k2                     = KernelVectorDot<KernelHyperparameters>(options,
+                                                         std::as_const(d_views),
+                                                         std::as_const(e_views),
+                                                         f_views);
 
         auto kernels = pack(k1, k2);
 
@@ -171,8 +179,16 @@ TEST_CASE("Algorithm: Test No Dependencies, W/ Reordering")
         }
 
         // first test is just a few VectorDot kernels that should work
-        auto k1 = KernelVectorDot(options, std::as_const(a_views), std::as_const(b_views), c_views);
-        auto k2 = KernelVectorDot(options, std::as_const(d_views), std::as_const(e_views), f_views);
+        using ChosenLinspace        = NoOptions;
+        using KernelHyperparameters = HyperparameterOptions<ChosenLinspace>;
+        auto k1                     = KernelVectorDot<KernelHyperparameters>(options,
+                                                         std::as_const(a_views),
+                                                         std::as_const(b_views),
+                                                         c_views);
+        auto k2                     = KernelVectorDot<KernelHyperparameters>(options,
+                                                         std::as_const(d_views),
+                                                         std::as_const(e_views),
+                                                         f_views);
 
         auto kernels = pack(k1, k2);
 
@@ -299,9 +315,20 @@ TEST_CASE("Algorithm: 3 Kernels, 1 Dependent, No Reordering")
 
         // this is basically kernels 1, 3, and 4 from before
 
-        auto k1 = KernelVectorDot(options, std::as_const(a_views), std::as_const(b_views), c_views);
-        auto k2 = KernelVectorDot(options, std::as_const(d_views), std::as_const(e_views), f_views);
-        auto k3 = KernelVectorDot(options, std::as_const(c_views), std::as_const(g_views), h_views);
+        using ChosenLinspace        = NoOptions;
+        using KernelHyperparameters = HyperparameterOptions<ChosenLinspace>;
+        auto k1                     = KernelVectorDot<KernelHyperparameters>(options,
+                                                         std::as_const(a_views),
+                                                         std::as_const(b_views),
+                                                         c_views);
+        auto k2                     = KernelVectorDot<KernelHyperparameters>(options,
+                                                         std::as_const(d_views),
+                                                         std::as_const(e_views),
+                                                         f_views);
+        auto k3                     = KernelVectorDot<KernelHyperparameters>(options,
+                                                         std::as_const(c_views),
+                                                         std::as_const(g_views),
+                                                         h_views);
 
         auto kernels = pack(k1, k2, k3);
 
@@ -461,9 +488,20 @@ TEST_CASE("Algorithm: 3 Kernels, 1 Dependent, Reordering")
 
         // this is basically kernels 1, 3, and 4 from before
 
-        auto k1 = KernelVectorDot(options, std::as_const(a_views), std::as_const(b_views), c_views);
-        auto k2 = KernelVectorDot(options, std::as_const(d_views), std::as_const(e_views), f_views);
-        auto k3 = KernelVectorDot(options, std::as_const(c_views), std::as_const(g_views), h_views);
+        using ChosenLinspace        = NoOptions;
+        using KernelHyperparameters = HyperparameterOptions<ChosenLinspace>;
+        auto k1                     = KernelVectorDot<KernelHyperparameters>(options,
+                                                         std::as_const(a_views),
+                                                         std::as_const(b_views),
+                                                         c_views);
+        auto k2                     = KernelVectorDot<KernelHyperparameters>(options,
+                                                         std::as_const(d_views),
+                                                         std::as_const(e_views),
+                                                         f_views);
+        auto k3                     = KernelVectorDot<KernelHyperparameters>(options,
+                                                         std::as_const(c_views),
+                                                         std::as_const(g_views),
+                                                         h_views);
 
         auto kernels = pack(k1, k2, k3);
 
@@ -625,9 +663,20 @@ TEST_CASE("Algorithm: Test Multiple Algos with Same Data")
 
         // this is basically kernels 1, 3, and 4 from before
 
-        auto k1 = KernelVectorDot(options, std::as_const(a_views), std::as_const(b_views), c_views);
-        auto k2 = KernelVectorDot(options, std::as_const(d_views), std::as_const(e_views), f_views);
-        auto k3 = KernelVectorDot(options, std::as_const(c_views), std::as_const(g_views), h_views);
+        using ChosenLinspace        = NoOptions;
+        using KernelHyperparameters = HyperparameterOptions<ChosenLinspace>;
+        auto k1                     = KernelVectorDot<KernelHyperparameters>(options,
+                                                         std::as_const(a_views),
+                                                         std::as_const(b_views),
+                                                         c_views);
+        auto k2                     = KernelVectorDot<KernelHyperparameters>(options,
+                                                         std::as_const(d_views),
+                                                         std::as_const(e_views),
+                                                         f_views);
+        auto k3                     = KernelVectorDot<KernelHyperparameters>(options,
+                                                         std::as_const(c_views),
+                                                         std::as_const(g_views),
+                                                         h_views);
 
         auto kernels = pack(k1, k2, k3);
 
@@ -798,9 +847,20 @@ TEST_CASE("Algorithm: Test Multiple Algos (Diff Kernels) with Same Data")
 
         // this is basically kernels 1, 3, and 4 from before
 
-        auto k1 = KernelVectorDot(options, std::as_const(a_views), std::as_const(b_views), c_views);
-        auto k2 = KernelVectorDot(options, std::as_const(d_views), std::as_const(e_views), f_views);
-        auto k3 = KernelVectorDot(options, std::as_const(c_views), std::as_const(g_views), h_views);
+        using ChosenLinspace        = NoOptions;
+        using KernelHyperparameters = HyperparameterOptions<ChosenLinspace>;
+        auto k1                     = KernelVectorDot<KernelHyperparameters>(options,
+                                                         std::as_const(a_views),
+                                                         std::as_const(b_views),
+                                                         c_views);
+        auto k2                     = KernelVectorDot<KernelHyperparameters>(options,
+                                                         std::as_const(d_views),
+                                                         std::as_const(e_views),
+                                                         f_views);
+        auto k3                     = KernelVectorDot<KernelHyperparameters>(options,
+                                                         std::as_const(c_views),
+                                                         std::as_const(g_views),
+                                                         h_views);
 
         auto kernels  = pack(k1, k2, k3);
         auto kernels2 = pack(k1, k2);
