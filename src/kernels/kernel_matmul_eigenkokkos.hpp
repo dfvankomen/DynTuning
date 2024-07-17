@@ -74,6 +74,7 @@ inline auto KernelMatMulEigenKokkosKernel(KernelOptions& options, ParameterTypes
 
     // then build up the policy collection
     auto full_policy_collection = create_range_policy_device<0>(extent);
+    auto policy_names           = create_range_policy_device_collection();
 
     // NOTE: kernel 0 cannot adjust range policy, as it is up to the user!
 
@@ -82,10 +83,12 @@ inline auto KernelMatMulEigenKokkosKernel(KernelOptions& options, ParameterTypes
                   FunctorKernel_MatMul_Kokkos_Device,
                   decltype(views),
                   decltype(is_const),
-                  decltype(full_policy_collection)>(name,
-                                                    views,
-                                                    is_const,
-                                                    extent,
-                                                    options,
-                                                    full_policy_collection);
+                  decltype(full_policy_collection),
+                  decltype(policy_names)>(name,
+                                          views,
+                                          is_const,
+                                          extent,
+                                          options,
+                                          full_policy_collection,
+                                          policy_names);
 }

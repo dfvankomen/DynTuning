@@ -83,11 +83,14 @@ inline auto KernelVectorOuter(KernelOptions& options, ParameterTypes&... data_vi
 
     // then build up the policy collection
     auto full_policy_collection = create_range_policy_device<2>(extent);
+    auto policy_names           = create_range_policy_device_collection();
 
     // TODO: user can adjust the policy via a similar method:
     // TODO: probably don't need to specify the device for this function
+    // using KernelLinspaceParameters = LinspaceOptions<32, 512, 2, 1, 10, 2>;
     // auto full_policy_collection =
-    //   create_range_policy_device<2, Kokkos::KOKKOS_DEVICE, 32, 150, 8, 1, 10, 3>(extent);
+    //   create_range_policy_device<2, Kokkos::KOKKOS_DEVICE, KernelLinspaceParameters>(extent);
+    // auto policy_names = create_range_policy_device_collection<KernelLinspaceParameters>();
 
     // create the kernel
     return Kernel<2,
@@ -95,12 +98,14 @@ inline auto KernelVectorOuter(KernelOptions& options, ParameterTypes&... data_vi
                   FunctorVectorOuter_Device,
                   decltype(views),
                   decltype(is_const),
-                  decltype(full_policy_collection)>(name,
-                                                    views,
-                                                    is_const,
-                                                    extent,
-                                                    options,
-                                                    full_policy_collection);
+                  decltype(full_policy_collection),
+                  decltype(policy_names)>(name,
+                                          views,
+                                          is_const,
+                                          extent,
+                                          options,
+                                          full_policy_collection,
+                                          policy_names);
 }
 
 /*

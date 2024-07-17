@@ -58,7 +58,9 @@ int main(int argc, char* argv[])
         options = { { DeviceSelector::HOST, DeviceSelector::DEVICE } };
 
     // Initialize Kokkos
+    printf("\nInitializing Kokkos...");
     Kokkos::initialize();
+    printf("\nKokkos initialized!\n");
     { // start Kokkos scope
 
         // first define all data
@@ -254,7 +256,7 @@ int main(int argc, char* argv[])
 
         std::cout << std::endl;
 
-        algo.print_results(true, true, num_output_truncate, std::cout);
+        algo.print_results(true, false, num_output_truncate, std::cout);
 
         // open up a file
         std::ofstream fileStream;

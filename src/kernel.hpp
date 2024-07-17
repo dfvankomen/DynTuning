@@ -6,11 +6,51 @@
 #include "view.hpp"
 
 #include <cstddef>
+#include <ostream>
 #include <utility>
 
 struct KernelOptions
 {
     std::vector<DeviceSelector> devices;
+};
+
+
+struct HyperParameterStorage
+{
+    std::size_t threads;
+    std::size_t blocks;
+
+    inline std::string to_string() const
+    {
+        return "t,b: " + std::to_string(threads) + "," + std::to_string(blocks);
+    }
+    inline std::string to_string_csv() const
+    {
+        return std::to_string(threads) + "," + std::to_string(blocks);
+    }
+};
+
+inline std::ostream& operator<<(std::ostream& os, const HyperParameterStorage& hp)
+{
+    os << "threads: " << hp.threads << " blocks: " << hp.blocks;
+    return os;
+}
+
+
+template<unsigned int StartThreads,
+         unsigned int EndThreads,
+         unsigned int NThreads,
+         unsigned int StartBlocks,
+         unsigned int EndBlocks,
+         unsigned int NBlocks>
+struct LinspaceOptions
+{
+    static constexpr unsigned int sthreads = StartThreads;
+    static constexpr unsigned int ethreads = EndThreads;
+    static constexpr unsigned int nthreads = NThreads;
+    static constexpr unsigned int sblocks  = StartBlocks;
+    static constexpr unsigned int eblocks  = EndBlocks;
+    static constexpr unsigned int nblocks  = NBlocks;
 };
 
 //=============================================================================
@@ -23,7 +63,8 @@ template<int KernelRank,
          class DeviceFunctorType,
          typename DataViewsType,
          typename IsConstTupleType,
-         typename DeviceExecutionPolicyCollection>
+         typename DeviceExecutionPolicyCollection,
+         typename DeviceExecutionPolicyData>
 class Kernel
 {
   public:
@@ -57,7 +98,8 @@ class Kernel
            IsConstTupleType is_const,
            const RangeExtent<KernelRank>& extent,
            KernelOptions& options,
-           DeviceExecutionPolicyCollection& device_execution_policies)
+           DeviceExecutionPolicyCollection& device_execution_policies,
+           DeviceExecutionPolicyData& policy_data)
       : kernel_name_(std::string(name))
       , data_views_(views)
       , is_const_(is_const)
@@ -67,12 +109,26 @@ class Kernel
       , range_policy_device_(DeviceRangePolicy(extent.lower, extent.upper))
       , options_(options)
       , device_execution_policies_(device_execution_policies)
+      , device_execution_policy_data_(policy_data)
     {
     }
 
     void operator()(DeviceSelector device_selector, std::size_t rpIdx = 0)
     {
         call_kernel(*this, device_selector, rpIdx);
+    };
+
+    auto get_hyperparameters(DeviceSelector device_selector, std::size_t rpIdx = 0)
+    {
+
+        if (device_selector == DeviceSelector::DEVICE)
+        {
+            return device_execution_policy_data_[rpIdx];
+        }
+        else
+        {
+            return HyperParameterStorage({ 0, 0 });
+        }
     };
 
     // kernel name for debugging
@@ -99,6 +155,8 @@ class Kernel
     // HostExecutionPolicyCollection host_execution_policies_;
     DeviceExecutionPolicyCollection device_execution_policies_;
     std::size_t n_device_execution_policies_ = std::tuple_size_v<DeviceExecutionPolicyCollection>;
+
+    DeviceExecutionPolicyData device_execution_policy_data_;
 };
 
 
@@ -188,19 +246,17 @@ constexpr auto _crpd_innermost_default(const RangeExtent<KernelRank>& extent)
     return DeviceRangePolicy(extent.lower, extent.upper);
 }
 
-template<int KernelRank,
-         typename ExecutionSpace,
-         unsigned int StartThreads,
-         unsigned int EndThreads,
-         unsigned int NThreads,
-         unsigned int StartBlocks,
-         unsigned int EndBlocks,
-         unsigned int NBlocks,
-         unsigned int K>
+template<int KernelRank, typename ExecutionSpace, typename LinspaceOptions, unsigned int K>
 constexpr auto _crpd_innermost(const RangeExtent<KernelRank>& extent)
 {
-    constexpr unsigned int threads = linspace_val(StartThreads, EndThreads, NThreads, K / NBlocks);
-    constexpr unsigned int blocks  = linspace_val(StartBlocks, EndBlocks, NBlocks, K % NBlocks);
+    constexpr unsigned int threads = linspace_val(LinspaceOptions::sthreads,
+                                                  LinspaceOptions::ethreads,
+                                                  LinspaceOptions::nthreads,
+                                                  K / LinspaceOptions::nblocks);
+    constexpr unsigned int blocks  = linspace_val(LinspaceOptions::sblocks,
+                                                 LinspaceOptions::eblocks,
+                                                 LinspaceOptions::nblocks,
+                                                 K % LinspaceOptions::nblocks);
     using ComputedLaunchBounds     = typename Kokkos::LaunchBounds<threads, blocks>;
     using DeviceRangePolicy =
       typename RangePolicy<KernelRank, ExecutionSpace, ComputedLaunchBounds>::type;
@@ -210,55 +266,28 @@ constexpr auto _crpd_innermost(const RangeExtent<KernelRank>& extent)
     return DeviceRangePolicy(extent.lower, extent.upper);
 }
 
-template<int KernelRank,
-         typename ExecutionSpace,
-         unsigned int StartThreads,
-         unsigned int EndThreads,
-         unsigned int NThreads,
-         unsigned int StartBlocks,
-         unsigned int EndBlocks,
-         unsigned int NBlocks,
-         std::size_t... I>
+template<int KernelRank, typename ExecutionSpace, typename LinspaceOptions, std::size_t... I>
 constexpr auto _crpd_inner(const RangeExtent<KernelRank>& extent, std::index_sequence<I...>)
 {
     // create a tuple that holds everything we need
     // the first one should include Kokkos' automatic just in case
-    return std::make_tuple(_crpd_innermost_default<KernelRank, ExecutionSpace>(extent),
-                           _crpd_innermost<KernelRank,
-                                           ExecutionSpace,
-                                           StartThreads,
-                                           EndThreads,
-                                           NThreads,
-                                           StartBlocks,
-                                           EndBlocks,
-                                           NBlocks,
-                                           I>(extent)...);
+    return std::make_tuple(
+      _crpd_innermost_default<KernelRank, ExecutionSpace>(extent),
+      _crpd_innermost<KernelRank, ExecutionSpace, LinspaceOptions, I>(extent)...);
 }
 
-template<int KernelRank,
-         typename ExecutionSpace,
-         unsigned int StartThreads,
-         unsigned int EndThreads,
-         unsigned int NThreads,
-         unsigned int StartBlocks,
-         unsigned int EndBlocks,
-         unsigned int NBlocks>
+template<int KernelRank, typename ExecutionSpace, typename LinspaceOptions>
 constexpr auto create_range_policy_device(const RangeExtent<KernelRank>& extent)
 {
-    static_assert(NThreads > 1,
+    static_assert(LinspaceOptions::nthreads > 1,
                   "Number of steps has to be greater than 1 for linspace calculations to work!");
-    static_assert(NBlocks > 1,
+    static_assert(LinspaceOptions::nblocks > 1,
                   "Number of steps has to be greater than 1 for linspace calculations to work!");
 
     // now we can call the first layer
-    return _crpd_inner<KernelRank,
-                       ExecutionSpace,
-                       StartThreads,
-                       EndThreads,
-                       NThreads,
-                       StartBlocks,
-                       EndBlocks,
-                       NBlocks>(extent, std::make_index_sequence<NThreads * NBlocks> {});
+    return _crpd_inner<KernelRank, ExecutionSpace, LinspaceOptions>(
+      extent,
+      std::make_index_sequence<LinspaceOptions::nthreads * LinspaceOptions::nblocks> {});
 }
 
 
@@ -270,4 +299,58 @@ constexpr auto create_range_policy_device(const RangeExtent<KernelRank>& extent)
     // then we can create our object
     // return MyTestObject({ threads, blocks });
     return std::make_tuple(DeviceRangePolicy(extent.lower, extent.upper));
+}
+
+
+// Linspace Hyper Parameter Storage
+template<typename LinspaceOptions, unsigned int K>
+constexpr auto _crpdc_innermost()
+{
+    constexpr unsigned int threads = linspace_val(LinspaceOptions::sthreads,
+                                                  LinspaceOptions::ethreads,
+                                                  LinspaceOptions::nthreads,
+                                                  K / LinspaceOptions::nblocks);
+    constexpr unsigned int blocks  = linspace_val(LinspaceOptions::sblocks,
+                                                 LinspaceOptions::eblocks,
+                                                 LinspaceOptions::nblocks,
+                                                 K % LinspaceOptions::nblocks);
+
+    return HyperParameterStorage({ threads, blocks });
+}
+
+template<typename LinspaceOptions, std::size_t... I>
+constexpr auto _crpdc_inner(std::index_sequence<I...>)
+{
+    // create a tuple that holds everything we need
+    // the first one should include Kokkos' automatic just in case
+    std::vector<HyperParameterStorage> output;
+
+    // start by pushing back the rest of it
+
+    output.push_back(HyperParameterStorage({ 0, 0 }));
+    (output.push_back(_crpdc_innermost<LinspaceOptions, I>()), ...);
+
+    return output;
+    // return std::make_tuple(HyperParameterStorage({ 0, 0 }),
+    //                        _crpdc_innermost<LinspaceOptions, I>()...);
+}
+
+template<typename LinspaceOptions>
+constexpr auto create_range_policy_device_collection()
+{
+    static_assert(LinspaceOptions::nthreads > 1,
+                  "Number of steps has to be greater than 1 for linspace calculations to work!");
+    static_assert(LinspaceOptions::nblocks > 1,
+                  "Number of steps has to be greater than 1 for linspace calculations to work!");
+
+    // now we can call the first layer
+    return _crpdc_inner<LinspaceOptions>(
+      std::make_index_sequence<LinspaceOptions::nthreads * LinspaceOptions::nblocks> {});
+}
+
+
+inline auto create_range_policy_device_collection()
+{
+    // just return a vector with one type
+    return std::vector<HyperParameterStorage>({ HyperParameterStorage({ 0, 0 }) });
 }

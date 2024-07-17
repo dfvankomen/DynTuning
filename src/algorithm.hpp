@@ -1096,7 +1096,15 @@ class Algorithm
 
         if (csv_format)
         {
-            outs << "speedRank,mainID,chainID,hyperparamID,opsTime,totalTime\n";
+            outs << "speedRank,mainID,chainID,hyperparamID,opsTime,totalTime";
+
+            // and then get the descriptions for the hyperparameter stuff
+            for (std::size_t kid = 0; kid < std::tuple_size_v<KernelsTuple>; kid++)
+            {
+                outs << "," << "threads" << kid << ",blocks" << kid;
+            }
+            // don't forget the new line!
+            outs << "\n";
         }
         else
         {
@@ -1162,16 +1170,67 @@ class Algorithm
             std::size_t hyperparam_id =
               i_chain - kernel_chain_device_permutations_bounds[the_chain];
 
+            //
+            // -- HYPERPARAMETER INFORMATION GATHERING
+            //
+            std::vector<std::string> hyperparameter_strings(std::tuple_size_v<KernelsTuple>, "");
+            // then get the kernel selector
+            auto perm = kernel_chain_device_permutations[the_chain][hyperparam_id];
+            // grab the selectors so we know what we were working with!
+            std::vector<KernelSelector> kernel_chain = kernel_chains[the_chain];
+            // then we can go through and get the information!
+            for (KernelSelector ksel : kernel_chain)
+            {
+                DeviceSelector kernel_device = ksel.kernel_device;
+                size_t kid                   = ksel.kernel_id;
+
+                HyperParameterStorage temp({ 0, 0 });
+
+                if (kernel_device == DeviceSelector::DEVICE)
+                {
+                    find_tuple(kernels_,
+                               kid,
+                               [&]<typename KernelType>(KernelType& k)
+                    {
+                        // after finding the tuple, get the hyperparameters
+                        temp = k.get_hyperparameters(kernel_device, perm[kid]);
+                    });
+                }
+
+                hyperparameter_strings[kid] = csv_format ? temp.to_string_csv() : temp.to_string();
+            }
+            // -- END HYPERPARAMTER GATHERING
+
             if (csv_format)
             {
                 outs << ii << "," << i_chain << "," << the_chain << "," << hyperparam_id << ","
-                     << chain_time << "," << total_time << "\n";
+                     << chain_time << "," << total_time;
+
+                // get the hyperparameter strings
+                for (auto str : hyperparameter_strings)
+                {
+                    outs << "," << str;
+                }
+
+                // and don't forget the newline
+                outs << "\n";
             }
             else
             {
                 outs << std::setw(4) << ii << "  ID: " << std::setw(5) << i_chain
-                     << "  Chain: " << the_chain << "  Hyper: " << hyperparam_id << "\t"
-                     << std::scientific << chain_time << "\t" << total_time << std::endl;
+                     << "  Chain: " << the_chain;
+
+                // then the hyperparameter string
+                outs << "\t| HyperParams (ID:" << std::setw(3) << hyperparam_id << "):\t";
+
+                for (auto str : hyperparameter_strings)
+                {
+                    outs << str << " ";
+                }
+
+                outs << "|\t" << std::scientific << chain_time << "\t" << total_time;
+
+                outs << "\n";
             }
         }
 

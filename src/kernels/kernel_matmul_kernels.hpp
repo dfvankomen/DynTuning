@@ -65,6 +65,7 @@ inline auto KernelMatMulKokkosKernel(KernelOptions& options, ParameterTypes&... 
 
     // then build up the policy collection
     auto full_policy_collection = create_range_policy_device<0>(extent);
+    auto policy_names           = create_range_policy_device_collection();
     // NOTE: this is a kernelrank 0
 
 
@@ -73,10 +74,12 @@ inline auto KernelMatMulKokkosKernel(KernelOptions& options, ParameterTypes&... 
                   FunctorKernel_MatMul_Kernels_Device,
                   decltype(views),
                   decltype(is_const),
-                  decltype(full_policy_collection)>(name,
-                                                    views,
-                                                    is_const,
-                                                    extent,
-                                                    options,
-                                                    full_policy_collection);
+                  decltype(full_policy_collection),
+                  decltype(policy_names)>(name,
+                                          views,
+                                          is_const,
+                                          extent,
+                                          options,
+                                          full_policy_collection,
+                                          policy_names);
 }

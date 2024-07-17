@@ -60,6 +60,7 @@ inline auto KernelTestR0(KernelOptions& options, ParameterTypes&... data_views)
 
     // then build up the policy collection
     auto full_policy_collection = create_range_policy_device<0>(extent);
+    auto policy_names           = create_range_policy_device_collection();
     // another rank 0 kernel!
 
     return Kernel<0,
@@ -67,10 +68,12 @@ inline auto KernelTestR0(KernelOptions& options, ParameterTypes&... data_views)
                   FunctorKernelRank0_Device,
                   decltype(views),
                   decltype(is_const),
-                  decltype(full_policy_collection)>(name,
-                                                    views,
-                                                    is_const,
-                                                    extent,
-                                                    options,
-                                                    full_policy_collection);
+                  decltype(full_policy_collection),
+                  decltype(policy_names)>(name,
+                                          views,
+                                          is_const,
+                                          extent,
+                                          options,
+                                          full_policy_collection,
+                                          policy_names);
 }
