@@ -10,10 +10,13 @@ struct FunctorVectorDot_Host
     template<typename ViewsTuple, typename Index>
     KOKKOS_FUNCTION void operator()(ViewsTuple views, const Index i) const
     {
+        // get inputs a and b
         auto a = std::get<0>(views);
         auto b = std::get<1>(views);
+        // get the output c
         auto c = std::get<2>(views);
-        c(i)   = a(i) * b(i);
+        // perform the math
+        c(i) = a(i) * b(i);
     }
 };
 
@@ -22,10 +25,13 @@ struct FunctorVectorDot_Device
     template<typename ViewsTuple, typename Index>
     KOKKOS_FUNCTION void operator()(ViewsTuple views, const Index i) const
     {
+        // get inputs a and b
         auto a = std::get<0>(views);
         auto b = std::get<1>(views);
+        // get the output c
         auto c = std::get<2>(views);
-        c(i)   = a(i) * b(i);
+        // perform the math
+        c(i) = a(i) * b(i);
     }
 };
 

@@ -15,18 +15,13 @@ struct FunctorMatVecMult_Host
     template<typename ViewsTuple, typename Index>
     KOKKOS_FUNCTION void operator()(ViewsTuple views, const Index i, const Index j) const
     {
-
+        // Input matrix A, input vector x, output vector b
         auto A = std::get<0>(views);
         auto x = std::get<1>(views);
         auto b = std::get<2>(views);
 
+        // Atomic addition for race condition
         Kokkos::atomic_add(&b(i), A(i, j) * x(j));
-
-        // b(i) += A(i, j) * x(j);
-
-        // need to return b(i) instead of trying to update automatically!
-
-        // printf("%f = %f * %f\n", A(i, j) * x(j), A(i,j), x(j));
     }
 };
 
@@ -35,20 +30,13 @@ struct FunctorMatVecMult_Device
     template<typename ViewsTuple, typename Index>
     KOKKOS_FUNCTION void operator()(ViewsTuple views, const Index i, const Index j) const
     {
-        // NOTE: race condition because we're trying to update b(i) at the same time
-
+        // Input matrix A, input vector x, output vector b
         auto A = std::get<0>(views);
         auto x = std::get<1>(views);
         auto b = std::get<2>(views);
 
-        // for the CPUj side, is atomic add necessary?
-        // my gut says no, but that depends on the backend that's working
+        // Atomic addition for race condition
         Kokkos::atomic_add(&b(i), A(i, j) * x(j));
-        // b(i) += A(i, j) * x(j);
-
-        // need to return b(i) instead of trying to update automatically!
-
-        // printf("( %d %d ) %f = %f * %f\n", i, j, A(i, j) * x(j), A(i, j), x(j));
     }
 };
 

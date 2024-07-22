@@ -14,7 +14,7 @@ struct FunctorMatMatMult_Host
     template<typename ViewsTuple, typename Index>
     KOKKOS_FUNCTION void operator()(ViewsTuple views, const Index i, const Index j) const
     {
-        // certainly want some eigen implementation as well
+        // A and B are inputs, C is output
         auto A = std::get<0>(views);
         auto B = std::get<1>(views);
         auto C = std::get<2>(views);
@@ -35,7 +35,7 @@ struct FunctorMatMatMult_Device
     template<typename ViewsTuple, typename Index>
     KOKKOS_FUNCTION void operator()(ViewsTuple views, const Index i, const Index j) const
     {
-        // maybe just straight up CuBLAS?
+        // A and B are inputs, C is output
         auto A = std::get<0>(views);
         auto B = std::get<1>(views);
         auto C = std::get<2>(views);
