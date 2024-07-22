@@ -8,6 +8,7 @@
 #include "algorithm.hpp"
 #include "common.hpp"
 #include "data.hpp"
+#include "kernel_matmatmult.hpp"
 #include "kernel_matvecmult.hpp"
 #include "kernel_vectordot.hpp"
 
@@ -45,6 +46,7 @@ int main(int argc, char* argv[])
     int num_sims            = set_num_sims(argc, argv);
     int num_chain_runs      = set_num_chain_runs(argc, argv);
     int num_output_truncate = set_num_output_truncate(argc, argv);
+    std::string save_prefix = set_save_prefix(argc, argv);
 
 #ifdef DYNTUNE_SINGLE_CHAIN_RUN
     unsigned int single_chain = set_single_chain_run(argc, argv);
@@ -74,6 +76,16 @@ int main(int argc, char* argv[])
         std::vector<double> x(N);
         std::vector<double> y(N);
         std::vector<double> z(N);
+
+        // matrix-matrix tests!
+        DynMatrix2D aa(N, N); // input
+        DynMatrix2D bb(N, N); // input
+        DynMatrix2D cc(N, N); // output
+        DynMatrix2D dd(N, N); // input
+        DynMatrix2D ee(N, N); // input
+        DynMatrix2D ff(N, N); // output
+        DynMatrix2D gg(N, N); // input
+        DynMatrix2D hh(N, N); // output
 
         std::vector<double> s_truth(N);
         std::vector<double> w_truth(N);
@@ -106,6 +118,20 @@ int main(int argc, char* argv[])
                 w_truth[i] = v[i] * u[i];
                 z_truth[i] = s_truth[i] * y[i];
             }
+
+
+            {
+                int ij = 0;
+                for (int i = 0; i < N; i++)
+                    for (int j = 0; j < N; j++)
+                    {
+                        aa(i, j) = static_cast<double>(ij++);
+                        bb(i, j) = static_cast<double>(ij++);
+                        dd(i, j) = static_cast<double>(ij++);
+                        ee(i, j) = static_cast<double>(ij++);
+                        gg(i, j) = static_cast<double>(ij++);
+                    }
+            }
         }
 
         // register all data into a DataManager
@@ -121,7 +147,15 @@ int main(int argc, char* argv[])
                                                     HashedName<hash("w")>(),
                                                     HashedName<hash("x")>(),
                                                     HashedName<hash("y")>(),
-                                                    HashedName<hash("z")>());
+                                                    HashedName<hash("z")>(),
+                                                    HashedName<hash("aa")>(),
+                                                    HashedName<hash("bb")>(),
+                                                    HashedName<hash("cc")>(),
+                                                    HashedName<hash("dd")>(),
+                                                    HashedName<hash("ee")>(),
+                                                    HashedName<hash("ff")>(),
+                                                    HashedName<hash("gg")>(),
+                                                    HashedName<hash("hh")>());
         /*
         init_data_views(q, r, s, t, u, v, w, x, y, z);
         auto& q_views = get_data_view("q");
@@ -136,7 +170,8 @@ int main(int argc, char* argv[])
         auto& z_views = get_data_view("z");
         */
         printf("\nbuilding views\n");
-        auto data_views = create_views(pack(q, r, s, t, u, v, w, x, y, z));
+        auto data_views =
+          create_views(pack(q, r, s, t, u, v, w, x, y, z, aa, bb, cc, dd, ee, ff, gg, hh));
 
         auto& q_views = std::get<find<hash("q")>(data_names)>(data_views);
         auto& r_views = std::get<find<hash("r")>(data_names)>(data_views);
@@ -150,26 +185,22 @@ int main(int argc, char* argv[])
         auto& z_views = std::get<find<hash("z")>(data_names)>(data_views);
 
 
-        // TEMP: this is a temporary helper to try and figure out what's going on here
-        iter_tuple(data_views,
-                   [&]<typename TempViewType>(size_t view_id, TempViewType& temp_view)
-        {
-            std::cout << "View ID: " << view_id << std::endl;
-            iter_tuple(temp_view,
-                       [&]<typename DeviceHostViewTypeThing>(size_t view_inner_id,
-                                                             DeviceHostViewTypeThing& temp_inner) {
-                std::cout << "    inner: " << view_inner_id << " rank: " << temp_inner.rank()
-                          << std::endl;
-            });
-        });
-        // throw std::exception();
+        auto& aa_views = std::get<find<hash("aa")>(data_names)>(data_views);
+        auto& bb_views = std::get<find<hash("bb")>(data_names)>(data_views);
+        auto& cc_views = std::get<find<hash("cc")>(data_names)>(data_views);
+        auto& dd_views = std::get<find<hash("dd")>(data_names)>(data_views);
+        auto& ee_views = std::get<find<hash("ee")>(data_names)>(data_views);
+        auto& ff_views = std::get<find<hash("ff")>(data_names)>(data_views);
+        auto& gg_views = std::get<find<hash("gg")>(data_names)>(data_views);
+        auto& hh_views = std::get<find<hash("hh")>(data_names)>(data_views);
 
 
         // define all kernels
         printf("\nbuilding kernels\n");
 
-        // using ChosenLinspace = LinspaceOptions<32, 512, 2, 1, 10, 2>;
-        using ChosenLinspace        = NoOptions;
+        using ChosenLinspace = LinspaceOptions<32, 512, 5, 1, 10, 3>;
+        // using ChosenLinspace = NoOptions;
+
         using KernelHyperparameters = HyperparameterOptions<ChosenLinspace>;
 
         auto k1 = KernelVectorDot<KernelHyperparameters>(options,
@@ -184,18 +215,34 @@ int main(int argc, char* argv[])
                                                          std::as_const(v_views),
                                                          std::as_const(u_views),
                                                          w_views); // VectorDot
-        // auto k5 = KernelVectorDot(options, std::as_const(v_views), std::as_const(u_views),
-        // w_views); // VectorDot
+        auto k5 = KernelVectorDot<KernelHyperparameters>(options,
+                                                         std::as_const(v_views),
+                                                         std::as_const(u_views),
+                                                         w_views); // VectorDot
         auto k4 = KernelVectorDot<KernelHyperparameters>(options,
                                                          std::as_const(s_views),
                                                          std::as_const(y_views),
                                                          z_views); // VectorDot
 
+        auto k_new1 = KernelMatMatMult<KernelHyperparameters>(options,
+                                                              std::as_const(aa_views),
+                                                              std::as_const(bb_views),
+                                                              cc_views);
+        auto k_new2 = KernelMatMatMult<KernelHyperparameters>(options,
+                                                              std::as_const(dd_views),
+                                                              std::as_const(ee_views),
+                                                              ff_views);
+        auto k_new3 = KernelMatMatMult<KernelHyperparameters>(options,
+                                                              std::as_const(cc_views),
+                                                              std::as_const(gg_views),
+                                                              hh_views);
+
         // register all kernels info an Algorithm
         // auto kernels = pack(k1, k2, k3, k4);
         printf("\nbuilding algorithm\n");
-        auto kernels = pack(k1, k3, k4);
+        // auto kernels = pack(k1, k3, k4);
         // auto kernels = pack(k2);
+        auto kernels = pack(k_new1, k_new2, k_new3);
         Algorithm algo(kernels, data_views, reordering);
         algo.set_num_chain_runs(num_chain_runs);
 
@@ -263,11 +310,19 @@ int main(int argc, char* argv[])
 
         algo.print_results(true, false, num_output_truncate, std::cout);
 
+        std::size_t full_output = std::numeric_limits<std::size_t>::max();
+
         // open up a file
         std::ofstream fileStream;
-        fileStream.open("sample.csv");
-        algo.print_results(true, true, std::numeric_limits<std::size_t>::max(), fileStream);
+        fileStream.open(save_prefix + "results.csv");
+        algo.print_results(true, true, full_output, fileStream);
         fileStream.close();
+
+        // then we also need to dump the information about the chains so we can investigate it
+        fileStream.open(save_prefix + "chains.csv");
+        algo.dump_kernel_chains(fileStream, full_output);
+        fileStream.close();
+
 
         // TESTS
         // TestVectorDot(k1, q, r, s);
