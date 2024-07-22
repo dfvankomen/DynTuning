@@ -749,42 +749,8 @@ class Algorithm
 
         } // 0
 
-        // with the vector of kernels now created, we can create a list of IDs to use to store more
-        // information about the profiling
-
-        std::cout << std::endl << "kernel chains" << std::endl;
-        // for (std::vector<KernelSelector> kernel_chain : kernel_chains) {
-        for (uint32_t i_chain : kernel_chain_ids)
-        {
-
-            // NOTE: this copies, should it grab by reference?
-            std::vector<KernelSelector> kernel_chain = kernel_chains[i_chain];
-
-            bool first_k = true;
-            for (KernelSelector ksel : kernel_chain)
-            {
-                bool first_dp = true;
-                if (first_k)
-                {
-                    std::cout << "Chain " << std::setw(4) << i_chain << ": ";
-                    first_k = false;
-                }
-                else
-                    std::cout << " ";
-                std::cout << "(" << ksel.kernel_id << ", " << ksel.kernel_device << ", (";
-                for (DeviceSelector output_device : ksel.output_device)
-                {
-                    if (first_dp)
-                        first_dp = false;
-                    else
-                        std::cout << ",";
-                    std::cout << output_device;
-                }
-                std::cout << "))";
-            }
-            std::cout << std::endl;
-        }
-        std::cout << std::endl;
+        // dump the kernel chains
+        dump_kernel_chains();
 
         std::cout << "Kernel data dependency graph: " << std::endl;
         data_graph.print_graph_normal();
@@ -1348,6 +1314,50 @@ class Algorithm
         }
 
         //
+    }
+
+    void dump_kernel_chains(std::ostream& outs = std::cout, std::size_t truncate = 10)
+    {
+        outs << "\n"
+             << "kernel chains" << std::endl;
+
+        // for (std::vector<KernelSelector> kernel_chain : kernel_chains) {
+        for (std::size_t i_chain = 0; i_chain < kernel_chains.size(); i_chain++)
+        {
+            if (i_chain >= truncate)
+            {
+                outs << "  ... There are " << kernel_chains.size() - i_chain
+                     << " remaining chains, see full output for more" << std::endl;
+                break;
+            }
+            // NOTE: this copies, should it grab by reference?
+            std::vector<KernelSelector> kernel_chain = kernel_chains[i_chain];
+
+            bool first_k = true;
+            for (KernelSelector ksel : kernel_chain)
+            {
+                bool first_dp = true;
+                if (first_k)
+                {
+                    outs << "Chain " << std::setw(4) << i_chain << ": ";
+                    first_k = false;
+                }
+                else
+                    outs << " ";
+                outs << "(" << ksel.kernel_id << ", " << ksel.kernel_device << ", (";
+                for (DeviceSelector output_device : ksel.output_device)
+                {
+                    if (first_dp)
+                        first_dp = false;
+                    else
+                        outs << ",";
+                    outs << output_device;
+                }
+                outs << "))";
+            }
+            outs << std::endl;
+        }
+        outs << std::endl;
     }
 
 }; // end Algorithm
