@@ -1,8 +1,11 @@
 #pragma once
 
+#include <ctime>
+#include <iomanip>
 #include <iostream>
 #include <map>
 #include <numeric>
+#include <sstream>
 
 // #ifdef USE_EIGEN
 #include "Eigen"
@@ -250,6 +253,30 @@ inline int set_num_output_truncate(int argc, char* argv[])
     }
     std::cout << "output_truncate = " << N << std::endl;
     return N;
+}
+
+
+
+inline std::string set_save_prefix(int argc, char* argv[])
+{
+    std::string prefix = "output";
+    for (int i = 0; i < argc; i++)
+    {
+        std::string arg = argv[i];
+        if (arg.find("--save_prefix=") == 0)
+        {
+            prefix = arg.substr(14);
+            break;
+        }
+    }
+    std::cout << "save_prefix = " << prefix << std::endl;
+
+    // then also get the current date and time
+    auto t         = std::time(nullptr);
+    auto curr_time = *std::localtime(&t);
+    std::ostringstream oss;
+    oss << std::put_time(&curr_time, "%d-%m-%Y_%H-%M-%S");
+    return prefix + "_" + oss.str() + "_";
 }
 
 #ifdef DYNTUNE_SINGLE_CHAIN_RUN
