@@ -61,6 +61,12 @@ struct LinspaceOptions
     static constexpr unsigned int nblocks  = NBlocks;
 };
 
+template<unsigned int MaxThreads, unsigned int MinBlocks>
+struct SingleLaunchBound
+{
+    static constexpr unsigned int maxT = MaxThreads;
+    static constexpr unsigned int minB = MinBlocks;
+};
 
 template<typename ConfigOption = NoOptions>
 struct HyperparameterOptions
@@ -98,7 +104,7 @@ struct is_launchbounds_options : std::false_type
 };
 
 template<unsigned int maxT, unsigned int minB>
-struct is_launchbounds_options<Kokkos::LaunchBounds<maxT, minB>> : std::true_type
+struct is_launchbounds_options<SingleLaunchBound<maxT, minB>> : std::true_type
 {
 };
 
@@ -350,7 +356,6 @@ constexpr auto create_range_policy_device(const RangeExtent<KernelRank>& extent)
     using DeviceRangePolicy = typename RangePolicy<KernelRank, ExecutionSpace>::type;
 
     // then we can create our object
-    // return MyTestObject({ threads, blocks });
     return std::make_tuple(DeviceRangePolicy(extent.lower, extent.upper));
 }
 
@@ -407,6 +412,18 @@ inline auto create_range_policy_device_collection()
     return std::vector<HyperParameterStorage>({ HyperParameterStorage({ 0, 0 }) });
 }
 
+template<int KernelRank, typename LaunchBoundsType, typename ExecutionSpace = Kokkos::KOKKOS_DEVICE>
+constexpr auto create_standard_policy(const RangeExtent<KernelRank>& extent)
+{
+    using DeviceRangePolicy = typename RangePolicy<
+      KernelRank,
+      ExecutionSpace,
+      Kokkos::LaunchBounds<LaunchBoundsType::maxT, LaunchBoundsType::minB>>::type;
+
+    // then we can create our object
+    return std::make_tuple(DeviceRangePolicy(extent.lower, extent.upper));
+}
+
 template<int KernelRank, typename DeviceType, typename HyperparamType>
 constexpr auto make_policy_from_hyperparameters(const RangeExtent<KernelRank>& extent)
 {
@@ -422,9 +439,7 @@ constexpr auto make_policy_from_hyperparameters(const RangeExtent<KernelRank>& e
     }
     else if constexpr (is_launchbounds_options_v<BaseType>)
     {
-        using DeviceRangePolicy =
-          typename RangePolicy<KernelRank, Kokkos::KOKKOS_DEVICE, BaseType>::type;
-        return std::make_tuple(DeviceRangePolicy(extent.lower, extent.upper));
+        return create_standard_policy<KernelRank, BaseType>(extent);
     }
     else
     {
@@ -445,6 +460,11 @@ constexpr auto make_hyperparameter_vector()
     else if constexpr (is_linspace_options_v<BaseType>)
     {
         return create_range_policy_device_collection<BaseType>();
+    }
+    else if constexpr (is_launchbounds_options_v<BaseType>)
+    {
+        return std::vector<HyperParameterStorage>(
+          { HyperParameterStorage({ BaseType::maxT, BaseType::minB }) });
     }
     else
     {
