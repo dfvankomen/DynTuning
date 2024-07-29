@@ -52,6 +52,8 @@ inline auto to_const_ref(T& arg, bool flag, int i, int j)
 template<typename HyperparameterConfig, typename... ParameterTypes>
 inline auto KernelVectorOuter(KernelOptions& options, ParameterTypes&... data_views)
 {
+    constexpr int KernelRank = 2;
+
     auto name = "vector-vector multiply";
 
     auto is_const = kernel_io_map(data_views...);
@@ -79,15 +81,17 @@ inline auto KernelVectorOuter(KernelOptions& options, ParameterTypes&... data_vi
         throw std::invalid_argument(
           "Vector B's length doesn't match the second dimension of the output matrix!");
 
-    auto extent = range_extent({ 0, 0 }, { N, M });
+    RangeExtent<KernelRank> extent = range_extent(Kokkos::Array<std::uint64_t, 2> { 0, 0 },
+                                                  Kokkos::Array<std::uint64_t, 2> { N, M });
 
     // generate the policy collection based on user hyperparameters
     auto full_policy_collection =
-      make_policy_from_hyperparameters<2, Kokkos::KOKKOS_DEVICE, HyperparameterConfig>(extent);
+      make_policy_from_hyperparameters<KernelRank, Kokkos::KOKKOS_DEVICE, HyperparameterConfig>(
+        extent);
     auto policy_names = make_hyperparameter_vector<HyperparameterConfig>();
 
     // create the kernel
-    return Kernel<2,
+    return Kernel<KernelRank,
                   FunctorVectorOuter_Host,
                   FunctorVectorOuter_Device,
                   decltype(views),
