@@ -8,12 +8,19 @@
 #include "algorithm.hpp"
 #include "common.hpp"
 #include "data.hpp"
+#include "kernel.hpp"
+#include "kernel_branch_testkernel.hpp"
+#include "kernel_branch_testkernel2d.hpp"
 #include "kernel_matmatmult.hpp"
+#include "kernel_matsum.hpp"
 #include "kernel_matvecmult.hpp"
 #include "kernel_vectordot.hpp"
+#include "kernel_xxderiv_2d.hpp"
+#include "kernel_yyderiv_2d.hpp"
 
 #include <fstream>
 #include <istream>
+#include <utility>
 
 /*
 #define init_data_views(...) \
@@ -198,10 +205,11 @@ int main(int argc, char* argv[])
         // define all kernels
         printf("\nbuilding kernels\n");
 
-        using ChosenLinspace = LinspaceOptions<32, 512, 5, 1, 10, 3>;
-        // using ChosenLinspace = NoOptions;
+        // using ChosenLinspace = LinspaceOptions<32, 512, 5, 1, 10, 3>;
+        using ChosenLinspace = LinspaceOptions<32, 512, 16, 1, 100, 5>;
 
-        using KernelHyperparameters = HyperparameterOptions<ChosenLinspace>;
+        using KernelHyperparameters  = HyperparameterOptions<ChosenLinspace>;
+        using KernelHyperparamters1D = HyperparameterOptions<NoOptions>;
 
         auto k1 = KernelVectorDot<KernelHyperparameters>(options,
                                                          std::as_const(q_views),
@@ -237,12 +245,36 @@ int main(int argc, char* argv[])
                                                               std::as_const(gg_views),
                                                               hh_views);
 
+        auto k_gradx =
+          KernelXXDeriv2D<KernelHyperparameters>(options, std::as_const(aa_views), dd_views);
+        auto k_grady =
+          KernelYYDeriv2D<KernelHyperparameters>(options, std::as_const(bb_views), ee_views);
+        auto k_gradout = KernelMatSum<KernelHyperparameters>(options,
+                                                             std::as_const(dd_views),
+                                                             std::as_const(ee_views),
+                                                             cc_views);
+
+
+        auto k_conditional =
+          KernelBranchTest<KernelHyperparamters1D>(options, std::as_const(q_views), r_views);
+
+        auto k_conditional2d =
+          KernelBranchTest2D<KernelHyperparameters>(options, std::as_const(aa_views), bb_views);
+
         // register all kernels info an Algorithm
         // auto kernels = pack(k1, k2, k3, k4);
         printf("\nbuilding algorithm\n");
         // auto kernels = pack(k1, k3, k4);
         // auto kernels = pack(k2);
-        auto kernels = pack(k_new1, k_new2, k_new3);
+        // auto kernels = pack(k_new1, k_new2, k_new3);
+        // auto kernels = pack(k_grady);
+        // auto kernels = pack(k_gradx);
+        // auto kernels = pack(k_conditional);
+        // auto kernels = pack(k1, k3);
+        // auto kernels = pack(k_new1);
+        // auto kernels = pack(k_conditional2d);
+        auto kernels = pack(k2);
+
         Algorithm algo(kernels, data_views, reordering);
         algo.set_num_chain_runs(num_chain_runs);
 
@@ -304,7 +336,12 @@ int main(int argc, char* argv[])
 
         printf("Running algorithm %d times...", num_sims);
         for (size_t ii = 0; ii < num_sims; ii++)
+        {
+            printf("Now starting run %d", ii);
             algo();
+            printf("  ...finished run %d", ii);
+        }
+
 
         std::cout << std::endl;
 
@@ -319,7 +356,7 @@ int main(int argc, char* argv[])
         fileStream.close();
 
         // then we also need to dump the information about the chains so we can investigate it
-        fileStream.open(save_prefix + "chains.csv");
+        fileStream.open(save_prefix + "chains.txt");
         algo.dump_kernel_chains(fileStream, full_output);
         fileStream.close();
 
