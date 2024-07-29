@@ -91,6 +91,20 @@ struct is_linspace_options<
 template<typename T>
 inline constexpr bool is_linspace_options_v = is_linspace_options<T>::value;
 
+// is launchbounds options
+template<typename T>
+struct is_launchbounds_options : std::false_type
+{
+};
+
+template<unsigned int maxT, unsigned int minB>
+struct is_launchbounds_options<Kokkos::LaunchBounds<maxT, minB>> : std::true_type
+{
+};
+
+template<typename T>
+inline constexpr bool is_launchbounds_options_v = is_launchbounds_options<T>::value;
+
 
 //=============================================================================
 // Kernel
@@ -340,7 +354,6 @@ constexpr auto create_range_policy_device(const RangeExtent<KernelRank>& extent)
     return std::make_tuple(DeviceRangePolicy(extent.lower, extent.upper));
 }
 
-
 // Linspace Hyper Parameter Storage
 template<typename LinspaceOptions, unsigned int K>
 constexpr auto _crpdc_innermost()
@@ -406,6 +419,12 @@ constexpr auto make_policy_from_hyperparameters(const RangeExtent<KernelRank>& e
     else if constexpr (is_linspace_options_v<BaseType>)
     {
         return create_range_policy_device<KernelRank, DeviceType, BaseType>(extent);
+    }
+    else if constexpr (is_launchbounds_options_v<BaseType>)
+    {
+        using DeviceRangePolicy =
+          typename RangePolicy<KernelRank, Kokkos::KOKKOS_DEVICE, BaseType>::type;
+        return std::make_tuple(DeviceRangePolicy(extent.lower, extent.upper));
     }
     else
     {
