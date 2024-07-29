@@ -1,4 +1,4 @@
-#include "algorithm.hpp"
+#include "optimizer.hpp"
 
 #include "Kokkos_Core.hpp"
 #include "common.hpp"
@@ -17,7 +17,7 @@ typedef Kokkos::Cuda DeviceExecSpace;
 typedef Kokkos::RangePolicy<DeviceExecSpace> device_range_policy;
 typedef Kokkos::MDRangePolicy<DeviceExecSpace, Kokkos::Rank<2>> device_rank2_range_policy;
 
-TEST_CASE("Algorithm: Test No Dependencies, No Reordering")
+TEST_CASE("Optimizer: Test No Dependencies, No Reordering")
 {
     const size_t N        = 10;
     const size_t M        = 20;
@@ -35,7 +35,7 @@ TEST_CASE("Algorithm: Test No Dependencies, No Reordering")
     Kokkos::initialize();
     {
 
-#include "helpers/algorithm_build_views.cpp"
+#include "helpers/optimizer_build_views.cpp"
 
         // truth vectors for numeric computations
         std::vector<double> c_truth(N);
@@ -63,9 +63,9 @@ TEST_CASE("Algorithm: Test No Dependencies, No Reordering")
 
         auto kernels = pack(k1, k2);
 
-        Algorithm algo(kernels, data_views, reordering);
+        Optimizer algo(kernels, data_views, reordering);
 
-        // do some checks on the algorithm's internals
+        // do some checks on the optimizer's internals
         REQUIRE(algo.reordering_ == reordering);
 
         // check the size of detected inputs and outputs
@@ -83,7 +83,7 @@ TEST_CASE("Algorithm: Test No Dependencies, No Reordering")
             REQUIRE(dep.size() == 0);
         }
 
-        // the algorithm "graph" is the simple graph used for traversal based on index.
+        // the optimizer "graph" is the simple graph used for traversal based on index.
         // this index is the kernel ID, which is the order passed into the tuple.
         // In particular, this is the KERNEL version of the dependencies
         for (auto& data_node : algo.graph)
@@ -115,7 +115,7 @@ TEST_CASE("Algorithm: Test No Dependencies, No Reordering")
         // device. that makes 4.
         REQUIRE(algo.kernel_chains.size() == 4);
 
-        // then set up our algorithm verification function to test both of our outputs!
+        // then set up our optimizer verification function to test both of our outputs!
         algo.set_validation_function([&a, &b, &c, &d, &e, &f, &c_truth, &f_truth, &N]()
         {
             double abs_difference = 0.0;
@@ -135,9 +135,9 @@ TEST_CASE("Algorithm: Test No Dependencies, No Reordering")
             REQUIRE_THAT(abs_difference, Catch::Matchers::WithinRel(0.0, 1.0e-10));
         });
 
-        printf("\nNow running algorithm...\n");
+        printf("\nNow running optimizer...\n");
         algo();
-        printf("\nFinished running algorithm!\n");
+        printf("\nFinished running optimizer!\n");
 
         // DONE
     }
@@ -146,7 +146,7 @@ TEST_CASE("Algorithm: Test No Dependencies, No Reordering")
 
 
 
-TEST_CASE("Algorithm: Test No Dependencies, W/ Reordering")
+TEST_CASE("Optimizer: Test No Dependencies, W/ Reordering")
 {
     const size_t N        = 10;
     const size_t M        = 20;
@@ -164,7 +164,7 @@ TEST_CASE("Algorithm: Test No Dependencies, W/ Reordering")
     Kokkos::initialize();
     {
 
-#include "helpers/algorithm_build_views.cpp"
+#include "helpers/optimizer_build_views.cpp"
 
         // truth vectors for numeric computations
         std::vector<double> c_truth(N);
@@ -192,9 +192,9 @@ TEST_CASE("Algorithm: Test No Dependencies, W/ Reordering")
 
         auto kernels = pack(k1, k2);
 
-        Algorithm algo(kernels, data_views, reordering);
+        Optimizer algo(kernels, data_views, reordering);
 
-        // do some checks on the algorithm's internals
+        // do some checks on the optimizer's internals
         REQUIRE(algo.reordering_ == reordering);
 
         // check the size of detected inputs and outputs
@@ -212,7 +212,7 @@ TEST_CASE("Algorithm: Test No Dependencies, W/ Reordering")
             REQUIRE(dep.size() == 0);
         }
 
-        // the algorithm "graph" is the simple graph used for traversal based on index.
+        // the optimizer "graph" is the simple graph used for traversal based on index.
         // this index is the kernel ID, which is the order passed into the tuple.
         // In particular, this is the KERNEL version of the dependencies
         for (auto& data_node : algo.graph)
@@ -244,7 +244,7 @@ TEST_CASE("Algorithm: Test No Dependencies, W/ Reordering")
         // device. that makes 8 since they can go in either order.
         REQUIRE(algo.kernel_chains.size() == 8);
 
-        // then set up our algorithm verification function to test both of our outputs!
+        // then set up our optimizer verification function to test both of our outputs!
         algo.set_validation_function([&c, &f, &c_truth, &f_truth, &N]()
         {
             double abs_difference = 0.0;
@@ -264,9 +264,9 @@ TEST_CASE("Algorithm: Test No Dependencies, W/ Reordering")
             REQUIRE_THAT(abs_difference, Catch::Matchers::WithinRel(0.0, 1.0e-10));
         });
 
-        printf("\nNow running algorithm...\n");
+        printf("\nNow running optimizer...\n");
         algo();
-        printf("\nFinished running algorithm!\n");
+        printf("\nFinished running optimizer!\n");
 
         algo.print_results();
     }
@@ -274,7 +274,7 @@ TEST_CASE("Algorithm: Test No Dependencies, W/ Reordering")
 }
 
 
-TEST_CASE("Algorithm: 3 Kernels, 1 Dependent, No Reordering")
+TEST_CASE("Optimizer: 3 Kernels, 1 Dependent, No Reordering")
 {
     const size_t N        = 10;
     const size_t M        = 20;
@@ -292,7 +292,7 @@ TEST_CASE("Algorithm: 3 Kernels, 1 Dependent, No Reordering")
     Kokkos::initialize();
     {
 
-#include "helpers/algorithm_build_views.cpp"
+#include "helpers/optimizer_build_views.cpp"
 
         // truth vectors for numeric computations
         std::vector<double> c_truth(N);
@@ -332,9 +332,9 @@ TEST_CASE("Algorithm: 3 Kernels, 1 Dependent, No Reordering")
 
         auto kernels = pack(k1, k2, k3);
 
-        Algorithm algo(kernels, data_views, reordering);
+        Optimizer algo(kernels, data_views, reordering);
 
-        // do some checks on the algorithm's internals
+        // do some checks on the optimizer's internals
         REQUIRE(algo.reordering_ == reordering);
 
         // check the size of detected inputs and outputs
@@ -369,7 +369,7 @@ TEST_CASE("Algorithm: 3 Kernels, 1 Dependent, No Reordering")
             }
         }
 
-        // the algorithm "graph" is the simple graph used for traversal based on index.
+        // the optimizer "graph" is the simple graph used for traversal based on index.
         // this index is the kernel ID, which is the order passed into the tuple.
         // In particular, this is the KERNEL version of the dependencies
         for (size_t i = 0; i < algo.graph.size(); i++)
@@ -418,7 +418,7 @@ TEST_CASE("Algorithm: 3 Kernels, 1 Dependent, No Reordering")
         // reduces the number a bit, so we have 8 chains
         REQUIRE(algo.kernel_chains.size() == 8);
 
-        // then set up our algorithm verification function to test both of our outputs!
+        // then set up our optimizer verification function to test both of our outputs!
         algo.set_validation_function([&f, &h, &f_truth, &h_truth, &N]()
         {
             double abs_difference = 0.0;
@@ -438,16 +438,16 @@ TEST_CASE("Algorithm: 3 Kernels, 1 Dependent, No Reordering")
             REQUIRE_THAT(abs_difference, Catch::Matchers::WithinRel(0.0, 1.0e-10));
         });
 
-        printf("\nNow running algorithm...\n");
+        printf("\nNow running optimizer...\n");
         algo();
-        printf("\nFinished running algorithm!\n");
+        printf("\nFinished running optimizer!\n");
 
         // DONE
     }
     Kokkos::finalize();
 }
 
-TEST_CASE("Algorithm: 3 Kernels, 1 Dependent, Reordering")
+TEST_CASE("Optimizer: 3 Kernels, 1 Dependent, Reordering")
 {
     const size_t N        = 10;
     const size_t M        = 20;
@@ -465,7 +465,7 @@ TEST_CASE("Algorithm: 3 Kernels, 1 Dependent, Reordering")
     Kokkos::initialize();
     {
 
-#include "helpers/algorithm_build_views.cpp"
+#include "helpers/optimizer_build_views.cpp"
 
         // truth vectors for numeric computations
         std::vector<double> c_truth(N);
@@ -505,9 +505,9 @@ TEST_CASE("Algorithm: 3 Kernels, 1 Dependent, Reordering")
 
         auto kernels = pack(k1, k2, k3);
 
-        Algorithm algo(kernels, data_views, reordering);
+        Optimizer algo(kernels, data_views, reordering);
 
-        // do some checks on the algorithm's internals
+        // do some checks on the optimizer's internals
         REQUIRE(algo.reordering_ == reordering);
 
         // check the size of detected inputs and outputs
@@ -542,7 +542,7 @@ TEST_CASE("Algorithm: 3 Kernels, 1 Dependent, Reordering")
             }
         }
 
-        // the algorithm "graph" is the simple graph used for traversal based on index.
+        // the optimizer "graph" is the simple graph used for traversal based on index.
         // this index is the kernel ID, which is the order passed into the tuple.
         // In particular, this is the KERNEL version of the dependencies
         for (size_t i = 0; i < algo.graph.size(); i++)
@@ -591,7 +591,7 @@ TEST_CASE("Algorithm: 3 Kernels, 1 Dependent, Reordering")
         // reduces the number a bit, so we have 24 chains
         REQUIRE(algo.kernel_chains.size() == 24);
 
-        // then set up our algorithm verification function to test both of our outputs!
+        // then set up our optimizer verification function to test both of our outputs!
         algo.set_validation_function([&f, &h, &f_truth, &h_truth, &N]()
         {
             double abs_difference = 0.0;
@@ -611,9 +611,9 @@ TEST_CASE("Algorithm: 3 Kernels, 1 Dependent, Reordering")
             REQUIRE_THAT(abs_difference, Catch::Matchers::WithinRel(0.0, 1.0e-10));
         });
 
-        printf("\nNow running algorithm...\n");
+        printf("\nNow running optimizer...\n");
         algo();
-        printf("\nFinished running algorithm!\n");
+        printf("\nFinished running optimizer!\n");
 
         // DONE
     }
@@ -622,7 +622,7 @@ TEST_CASE("Algorithm: 3 Kernels, 1 Dependent, Reordering")
 
 
 
-TEST_CASE("Algorithm: Test Multiple Algos with Same Data")
+TEST_CASE("Optimizer: Test Multiple Algos with Same Data")
 {
     const size_t N        = 10;
     const size_t M        = 20;
@@ -640,7 +640,7 @@ TEST_CASE("Algorithm: Test Multiple Algos with Same Data")
     Kokkos::initialize();
     {
 
-#include "helpers/algorithm_build_views.cpp"
+#include "helpers/optimizer_build_views.cpp"
 
         // truth vectors for numeric computations
         std::vector<double> c_truth(N);
@@ -680,10 +680,10 @@ TEST_CASE("Algorithm: Test Multiple Algos with Same Data")
 
         auto kernels = pack(k1, k2, k3);
 
-        Algorithm algo(kernels, data_views, reordering);
-        Algorithm algo2(kernels, data_views, reordering);
+        Optimizer algo(kernels, data_views, reordering);
+        Optimizer algo2(kernels, data_views, reordering);
 
-        // do some checks on the algorithm's internals
+        // do some checks on the optimizer's internals
         REQUIRE(algo.reordering_ == reordering);
 
         // check the size of detected inputs and outputs
@@ -718,7 +718,7 @@ TEST_CASE("Algorithm: Test Multiple Algos with Same Data")
             }
         }
 
-        // the algorithm "graph" is the simple graph used for traversal based on index.
+        // the optimizer "graph" is the simple graph used for traversal based on index.
         // this index is the kernel ID, which is the order passed into the tuple.
         // In particular, this is the KERNEL version of the dependencies
         for (size_t i = 0; i < algo.graph.size(); i++)
@@ -786,18 +786,18 @@ TEST_CASE("Algorithm: Test Multiple Algos with Same Data")
             REQUIRE_THAT(abs_difference, Catch::Matchers::WithinRel(0.0, 1.0e-10));
         };
 
-        // then set up our algorithm verification function to test both of our outputs!
+        // then set up our optimizer verification function to test both of our outputs!
         algo.set_validation_function(val_function);
         algo2.set_validation_function(val_function);
 
-        printf("\nNow running algorithm...\n");
+        printf("\nNow running optimizer...\n");
         algo();
-        printf("\nFinished running algorithm!\n");
+        printf("\nFinished running optimizer!\n");
 
 
-        printf("\nNow running algorithm 2...\n");
+        printf("\nNow running optimizer 2...\n");
         algo2();
-        printf("\nFinished running algorithm!\n");
+        printf("\nFinished running optimizer!\n");
 
         // DONE
     }
@@ -806,7 +806,7 @@ TEST_CASE("Algorithm: Test Multiple Algos with Same Data")
 
 
 
-TEST_CASE("Algorithm: Test Multiple Algos (Diff Kernels) with Same Data")
+TEST_CASE("Optimizer: Test Multiple Algos (Diff Kernels) with Same Data")
 {
     const size_t N        = 10;
     const size_t M        = 20;
@@ -824,7 +824,7 @@ TEST_CASE("Algorithm: Test Multiple Algos (Diff Kernels) with Same Data")
     Kokkos::initialize();
     {
 
-#include "helpers/algorithm_build_views.cpp"
+#include "helpers/optimizer_build_views.cpp"
 
         // truth vectors for numeric computations
         std::vector<double> c_truth(N);
@@ -865,8 +865,8 @@ TEST_CASE("Algorithm: Test Multiple Algos (Diff Kernels) with Same Data")
         auto kernels  = pack(k1, k2, k3);
         auto kernels2 = pack(k1, k2);
 
-        Algorithm algo(kernels, data_views, reordering);
-        Algorithm algo2(kernels2, data_views, reordering);
+        Optimizer algo(kernels, data_views, reordering);
+        Optimizer algo2(kernels2, data_views, reordering);
 
         auto val_function = [&f, &h, &f_truth, &h_truth, &N]()
         {
@@ -906,18 +906,18 @@ TEST_CASE("Algorithm: Test Multiple Algos (Diff Kernels) with Same Data")
             REQUIRE_THAT(abs_difference, Catch::Matchers::WithinRel(0.0, 1.0e-10));
         };
 
-        // then set up our algorithm verification function to test both of our outputs!
+        // then set up our optimizer verification function to test both of our outputs!
         algo.set_validation_function(val_function);
         algo2.set_validation_function(val_function2);
 
-        printf("\nNow running algorithm...\n");
+        printf("\nNow running optimizer...\n");
         algo();
-        printf("\nFinished running algorithm!\n");
+        printf("\nFinished running optimizer!\n");
 
 
-        printf("\nNow running algorithm 2...\n");
+        printf("\nNow running optimizer 2...\n");
         algo2();
-        printf("\nFinished running algorithm!\n");
+        printf("\nFinished running optimizer!\n");
 
         // DONE
     }

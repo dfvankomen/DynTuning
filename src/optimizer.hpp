@@ -13,13 +13,13 @@
 
 #define DEBUG_ENABLED 0
 
-// main algorithm object
+// main optimizer object
 template<typename KernelsTuple, typename ViewsTuple>
-class Algorithm
+class Optimizer
 {
   public:
     // constructor should initialize and empty vector
-    constexpr Algorithm(KernelsTuple kernels, ViewsTuple views, bool reordering = false)
+    constexpr Optimizer(KernelsTuple kernels, ViewsTuple views, bool reordering = false)
       : kernels_(kernels)
       , views_(views)
       , reordering_(reordering)
@@ -34,12 +34,12 @@ class Algorithm
         build_graph();
         build_expanded_chains();
     };
-    ~Algorithm() {};
+    ~Optimizer() {};
 
     // the core of this class is a tuple of kernels
     KernelsTuple kernels_;
 
-    // algorithm is reponsible for shuttling data
+    // optimizer is reponsible for shuttling data
     ViewsTuple views_;
 
     // allow reordering
@@ -202,7 +202,7 @@ class Algorithm
     // inner index yields a kernel in that stream
     std::vector<std::vector<size_t>> kernel_streams;
 
-    // these are the queues of operations the algorithm will actually execute
+    // these are the queues of operations the optimizer will actually execute
     // NOTE right now we always assume kernels are executed in a sequence
     //   however, in the future this could be expanded to allow concurrency of independent subchains
     std::vector<std::vector<KernelSelector>> kernel_chains;
@@ -865,7 +865,7 @@ class Algorithm
   public:
     void operator()()
     {
-        // std::cout << "Running algorithm attempt id = " << total_operations_run << std::endl;
+        // std::cout << "Running optimizer attempt id = " << total_operations_run << std::endl;
 
 #ifdef DYNTUNE_ENABLE_ORDER_SHUFFLE
         // std::cout << "Shuffling kernel chains..." << std::endl;
@@ -1360,4 +1360,4 @@ class Algorithm
         outs << std::endl;
     }
 
-}; // end Algorithm
+}; // end Optimizer

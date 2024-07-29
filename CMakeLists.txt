@@ -119,7 +119,7 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(Catch2)
 
-add_executable(tests tests/data.test.cpp tests/kernels.test.cpp tests/algorithm.test.cpp)
+add_executable(tests tests/data.test.cpp tests/kernels.test.cpp tests/optimizer.test.cpp)
 target_link_libraries(tests PRIVATE Catch2::Catch2WithMain)
 target_link_libraries(tests PRIVATE Kokkos::kokkos)
 target_link_libraries(tests PRIVATE Kokkos::kokkoskernels)

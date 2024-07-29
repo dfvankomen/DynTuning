@@ -1,6 +1,6 @@
 /**
- * @file algorithm_build_views.cpp
- * @brief This file is just pure C++ that is to be **included** for building algorithm views
+ * @file optimizer_build_views.cpp
+ * @brief This file is just pure C++ that is to be **included** for building optimizer views
  *
  */
 
@@ -80,4 +80,4 @@ else if constexpr (chain_use == 1)
 }
 #endif
 
-// then we can set up the algorithm
+// then we can set up the optimizer

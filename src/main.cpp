@@ -1,11 +1,10 @@
 // Assumptions:
-// * Algorithms are cast as operating on one element at a time
-// * Kernels are steps in the algorithm that typically involve a loop over the elements
+// * Optimizers are cast as operating on one element at a time
+// * Kernels are steps in the optimizer that typically involve a loop over the elements
 // * Inputs and outputs are all ndarrays at the element level
 //
 
 #include "Kokkos_Core.hpp"
-#include "algorithm.hpp"
 #include "common.hpp"
 #include "data.hpp"
 #include "kernel.hpp"
@@ -17,6 +16,7 @@
 #include "kernel_vectordot.hpp"
 #include "kernel_xxderiv_2d.hpp"
 #include "kernel_yyderiv_2d.hpp"
+#include "optimizer.hpp"
 
 #include <fstream>
 #include <istream>
@@ -261,9 +261,9 @@ int main(int argc, char* argv[])
         auto k_conditional2d =
           KernelBranchTest2D<KernelHyperparameters>(options, std::as_const(aa_views), bb_views);
 
-        // register all kernels info an Algorithm
+        // register all kernels info an Optimizer
         // auto kernels = pack(k1, k2, k3, k4);
-        printf("\nbuilding algorithm\n");
+        printf("\nbuilding optimizer\n");
         // auto kernels = pack(k1, k3, k4);
         // auto kernels = pack(k2);
         // auto kernels = pack(k_new1, k_new2, k_new3);
@@ -275,7 +275,7 @@ int main(int argc, char* argv[])
         // auto kernels = pack(k_conditional2d);
         auto kernels = pack(k2);
 
-        Algorithm algo(kernels, data_views, reordering);
+        Optimizer algo(kernels, data_views, reordering);
         algo.set_num_chain_runs(num_chain_runs);
 
 
@@ -329,12 +329,12 @@ int main(int argc, char* argv[])
 #endif
         });
 
-        // run the algorithm;
-        printf("\nrunning algorithm...\n");
+        // run the optimizer;
+        printf("\nrunning optimizer...\n");
 
         double progress = 0.0;
 
-        printf("Running algorithm %d times...", num_sims);
+        printf("Running optimizer %d times...", num_sims);
         for (size_t ii = 0; ii < num_sims; ii++)
         {
             printf("Now starting run %d", ii);
