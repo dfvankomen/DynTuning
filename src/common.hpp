@@ -21,6 +21,18 @@
 #define KOKKOS_DEVICE Cuda
 #endif
 
+// useful helper function for debugging classes without good template
+// type expansion, taken from https://stackoverflow.com/posts/59522794/revisions
+template<typename T>
+const char* prettyprint_function_type()
+{
+#ifdef _MSC_VER
+    return __FUNCSIG__;
+#else
+    return __PRETTY_FUNCTION__;
+#endif
+}
+
 // convenience Eigen typedefs
 typedef Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> DynMatrix2D;
 
