@@ -56,6 +56,8 @@ struct FunctorMatMatMult_Device
 template<typename HyperparameterConfig, typename... ParameterTypes>
 inline auto KernelMatMatMult(KernelOptions& options, ParameterTypes&... data_views)
 {
+    constexpr int KernelRank = 2;
+
     auto name = "matrix-matrix multiply";
 
     auto is_const = kernel_io_map(data_views...);
@@ -74,14 +76,16 @@ inline auto KernelMatMatMult(KernelOptions& options, ParameterTypes&... data_vie
     unsigned long N = out.extent(0);
     unsigned long M = out.extent(1);
 
-    auto extent = range_extent({ 0, 0 }, { N, M });
+    RangeExtent<KernelRank> extent = range_extent(Kokkos::Array<std::uint64_t, 2> { 0, 0 },
+                                                  Kokkos::Array<std::uint64_t, 2> { N, M });
 
     // generate the policy collection based on user hyperparameters
     auto full_policy_collection =
-      make_policy_from_hyperparameters<2, Kokkos::KOKKOS_DEVICE, HyperparameterConfig>(extent);
+      make_policy_from_hyperparameters<KernelRank, Kokkos::KOKKOS_DEVICE, HyperparameterConfig>(
+        extent);
     auto policy_names = make_hyperparameter_vector<HyperparameterConfig>();
 
-    return Kernel<2,
+    return Kernel<KernelRank,
                   FunctorMatMatMult_Host,
                   FunctorMatMatMult_Device,
                   decltype(views),
