@@ -87,22 +87,22 @@ set_target_properties(exe PROPERTIES OUTPUT_NAME ${PROJECT_NAME})
 
 
 # test build
-add_executable(testViewTransfer src/test_view_transfer.cpp)
-target_link_libraries(testViewTransfer PRIVATE Kokkos::kokkos)
-target_include_directories(testViewTransfer PRIVATE
+add_executable(kernelBlocks src/test_kernel_block_sizes.cpp)
+target_link_libraries(kernelBlocks PRIVATE Kokkos::kokkos)
+target_include_directories(kernelBlocks PRIVATE
 	"${CMAKE_CURRENT_SOURCE_DIR}/eigen/Eigen"
 	"${CUDA_HOME}/include"
   src
   src/kernels
 )
 add_definitions(-w)
-target_compile_options(testViewTransfer PRIVATE
+target_compile_options(kernelBlocks PRIVATE
   $<$<COMPILE_LANGUAGE:CUDA>:
     --extended-lambdas
   >
 )
-target_compile_features(testViewTransfer PRIVATE cxx_std_20)
-target_compile_definitions(testViewTransfer PUBLIC
+target_compile_features(kernelBlocks PRIVATE cxx_std_20)
+target_compile_definitions(kernelBlocks PUBLIC
   KOKKOS_HOST=${Kokkos_HOST}
   KOKKOS_DEVICE=${Kokkos_DEVICE}
 )
