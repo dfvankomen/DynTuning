@@ -70,7 +70,7 @@ int main(int argc, char* argv[])
 
         // go through all of the options and see how things change
         // build up the kernel
-        const unsigned int maxthreads = 256;
+        const unsigned int minblocks = 1;
 
         const unsigned int num_total_run = 11;
 
@@ -89,52 +89,52 @@ int main(int argc, char* argv[])
         //   std::as_const(x_views),
         //   std::as_const(y_views),
         //   z_views);
-        auto k1 = KernelToUse<HyperparameterOptions<SingleLaunchBound<maxthreads, 1>>>(
+        auto k1 = KernelToUse<HyperparameterOptions<SingleLaunchBound<32, minblocks>>>(
           options,
           std::as_const(x_views),
           std::as_const(y_views),
           z_views);
-        auto k2 = KernelToUse<HyperparameterOptions<SingleLaunchBound<maxthreads, 2>>>(
+        auto k2 = KernelToUse<HyperparameterOptions<SingleLaunchBound<64, minblocks>>>(
           options,
           std::as_const(x_views),
           std::as_const(y_views),
           z_views);
-        auto k3 = KernelToUse<HyperparameterOptions<SingleLaunchBound<maxthreads, 3>>>(
+        auto k3 = KernelToUse<HyperparameterOptions<SingleLaunchBound<128, minblocks>>>(
           options,
           std::as_const(x_views),
           std::as_const(y_views),
           z_views);
-        auto k4 = KernelToUse<HyperparameterOptions<SingleLaunchBound<maxthreads, 4>>>(
+        auto k4 = KernelToUse<HyperparameterOptions<SingleLaunchBound<256, minblocks>>>(
           options,
           std::as_const(x_views),
           std::as_const(y_views),
           z_views);
-        auto k5 = KernelToUse<HyperparameterOptions<SingleLaunchBound<maxthreads, 5>>>(
+        auto k5 = KernelToUse<HyperparameterOptions<SingleLaunchBound<512, minblocks>>>(
           options,
           std::as_const(x_views),
           std::as_const(y_views),
           z_views);
-        auto k6 = KernelToUse<HyperparameterOptions<SingleLaunchBound<maxthreads, 6>>>(
+        auto k6 = KernelToUse<HyperparameterOptions<SingleLaunchBound<1024, minblocks>>>(
           options,
           std::as_const(x_views),
           std::as_const(y_views),
           z_views);
-        auto k7 = KernelToUse<HyperparameterOptions<SingleLaunchBound<maxthreads, 7>>>(
+        auto k7 = KernelToUse<HyperparameterOptions<SingleLaunchBound<2048, minblocks>>>(
           options,
           std::as_const(x_views),
           std::as_const(y_views),
           z_views);
-        auto k8 = KernelToUse<HyperparameterOptions<SingleLaunchBound<maxthreads, 8>>>(
+        auto k8 = KernelToUse<HyperparameterOptions<SingleLaunchBound<4096, minblocks>>>(
           options,
           std::as_const(x_views),
           std::as_const(y_views),
           z_views);
-        auto k9 = KernelToUse<HyperparameterOptions<SingleLaunchBound<maxthreads, 9>>>(
+        auto k9 = KernelToUse<HyperparameterOptions<SingleLaunchBound<8192, minblocks>>>(
           options,
           std::as_const(x_views),
           std::as_const(y_views),
           z_views);
-        auto k10 = KernelToUse<HyperparameterOptions<SingleLaunchBound<maxthreads, 10>>>(
+        auto k10 = KernelToUse<HyperparameterOptions<SingleLaunchBound<16384, minblocks>>>(
           options,
           std::as_const(x_views),
           std::as_const(y_views),

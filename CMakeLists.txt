@@ -47,7 +47,7 @@ message(STATUS "Kokkos Device Execution Space: Kokkos::" ${Kokkos_DEVICE})
 
 option(DYNTUNE_ENABLE_ORDER_SHUFFLE "Whether or not to shuffle the kernel operation order" ON)
 option(DYNTUNE_SINGLE_CHAIN_RUN "Only allow a single chain to run, requires --single_chain option" OFF)
-option(DYNTUNE_DEBUG_ENABLED "Enables a large number of debug statements" ON)
+option(DYNTUNE_DEBUG_ENABLED "Enables a large number of debug statements" OFF)
 
 if(DYNTUNE_ENABLE_ORDER_SHUFFLE)
   add_definitions(-DDYNTUNE_ENABLE_ORDER_SHUFFLE)
@@ -106,6 +106,29 @@ target_compile_definitions(kernelBlocks PUBLIC
   KOKKOS_HOST=${Kokkos_HOST}
   KOKKOS_DEVICE=${Kokkos_DEVICE}
 )
+
+
+# test for threads
+add_executable(kernelThreads src/test_kernel_thread_sizes.cpp)
+target_link_libraries(kernelThreads PRIVATE Kokkos::kokkos)
+target_include_directories(kernelThreads PRIVATE
+	"${CMAKE_CURRENT_SOURCE_DIR}/eigen/Eigen"
+	"${CUDA_HOME}/include"
+  src
+  src/kernels
+)
+add_definitions(-w)
+target_compile_options(kernelThreads PRIVATE
+  $<$<COMPILE_LANGUAGE:CUDA>:
+    --extended-lambdas
+  >
+)
+target_compile_features(kernelThreads PRIVATE cxx_std_20)
+target_compile_definitions(kernelThreads PUBLIC
+  KOKKOS_HOST=${Kokkos_HOST}
+  KOKKOS_DEVICE=${Kokkos_DEVICE}
+)
+
 
 
 ## TEST CASES
