@@ -26,9 +26,9 @@ struct FunctorBranchTest2d_Host
         else
         {
             if (j % 2 == 0)
-                b(i, j) = a(i, j);
-            else
                 b(i, j) = a(i, j) * b(i, j);
+            else
+                b(i, j) = a(i, j);
         }
     }
 };
@@ -52,9 +52,9 @@ struct FunctorBranchTest2d_Device
         else
         {
             if (j % 2 == 0)
-                b(i, j) = a(i, j);
-            else
                 b(i, j) = a(i, j) * b(i, j);
+            else
+                b(i, j) = a(i, j);
         }
     }
 };
