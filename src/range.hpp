@@ -113,7 +113,7 @@ inline RangeExtent<2> range_extent(const Kokkos::Array<ArrayIndex, 2>& lower,
     return { lower, upper };
 }
 
-// for some reason, this doesn't actually get selected via auto
+// for some reason, this doesn't actually get selected via auto, so it needs to be by hand
 inline RangeExtent<3> range_extent(const Kokkos::Array<ArrayIndex, 3>& lower,
                                    const Kokkos::Array<ArrayIndex, 3>& upper)
 {

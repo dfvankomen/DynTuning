@@ -15,7 +15,6 @@ struct FunctorBranchTest2d_Host
         auto a = std::get<0>(views);
         auto b = std::get<1>(views);
 
-        // branch based on even/odd
         if (i % 2 == 0)
         {
             if (j % 2 == 0)

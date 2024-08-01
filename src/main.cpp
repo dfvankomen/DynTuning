@@ -4,6 +4,11 @@
 // * Inputs and outputs are all ndarrays at the element level
 //
 
+// TODO: this file should be cleaned up, there are lots of unnecessary objects created for data that
+// aren't needed This became basically a large testing ground for the framework. It shouldn't be
+// considered "part" of the framework
+
+
 #include "Kokkos_Core.hpp"
 #include "common.hpp"
 #include "data.hpp"
@@ -14,6 +19,7 @@
 #include "kernel_matsum.hpp"
 #include "kernel_matvecmult.hpp"
 #include "kernel_vectordot.hpp"
+#include "kernel_vectorouter.hpp"
 #include "kernel_xxderiv_2d.hpp"
 #include "kernel_yyderiv_2d.hpp"
 #include "optimizer.hpp"
@@ -208,7 +214,7 @@ int main(int argc, char* argv[])
         // using ChosenLinspace = LinspaceOptions<32, 512, 5, 1, 10, 3>;
         using ChosenLinspace = LinspaceOptions<32, 512, 16, 1, 100, 5>;
 
-        using KernelHyperparameters  = HyperparameterOptions<ChosenLinspace>;
+        using KernelHyperparameters  = HyperparameterOptions<NoOptions>;
         using KernelHyperparamters1D = HyperparameterOptions<NoOptions>;
 
         auto k1 = KernelVectorDot<KernelHyperparameters>(options,
@@ -261,6 +267,23 @@ int main(int argc, char* argv[])
         auto k_conditional2d =
           KernelBranchTest2D<KernelHyperparameters>(options, std::as_const(aa_views), bb_views);
 
+
+        // two test kernel chains
+        auto k_first  = KernelVectorOuter<KernelHyperparameters>(options,
+                                                                std::as_const(q_views),
+                                                                std::as_const(r_views),
+                                                                aa_views);
+        auto k_second = KernelMatVecMult<KernelHyperparameters>(options,
+                                                                std::as_const(aa_views),
+                                                                std::as_const(s_views),
+                                                                u_views);
+        auto k_third =
+          KernelBranchTest2D<KernelHyperparameters>(options, std::as_const(bb_views), cc_views);
+        auto k_fourth = KernelVectorDot<KernelHyperparameters>(options,
+                                                               std::as_const(v_views),
+                                                               std::as_const(w_views),
+                                                               x_views);
+
         // register all kernels info an Optimizer
         // auto kernels = pack(k1, k2, k3, k4);
         printf("\nbuilding optimizer\n");
@@ -273,7 +296,8 @@ int main(int argc, char* argv[])
         // auto kernels = pack(k1, k3);
         // auto kernels = pack(k_new1);
         // auto kernels = pack(k_conditional2d);
-        auto kernels = pack(k2);
+        // auto kernels = pack(k2);
+        auto kernels = pack(k_first, k_second, k_third, k_fourth);
 
         Optimizer algo(kernels, data_views, reordering);
         algo.set_num_chain_runs(num_chain_runs);
@@ -284,6 +308,7 @@ int main(int argc, char* argv[])
         algo.set_selected_chain(single_chain);
 #endif
 
+        // example validation function that can be set and run
         algo.set_validation_function([&s, &w, &z, &s_truth, &w_truth, &z_truth, &N]()
         {
 #ifdef DYNTUNE_DEBUG_ENABLED_TEST
@@ -332,17 +357,13 @@ int main(int argc, char* argv[])
         // run the optimizer;
         printf("\nrunning optimizer...\n");
 
-        double progress = 0.0;
-
         printf("Running optimizer %d times...", num_sims);
         for (size_t ii = 0; ii < num_sims; ii++)
         {
-            printf("Now starting run %d", ii);
+            printf("Now starting run %d\n", ii);
             algo();
-            printf("  ...finished run %d", ii);
+            printf("  ...finished run %d\n", ii);
         }
-
-
         std::cout << std::endl;
 
         algo.print_results(true, false, num_output_truncate, std::cout);
@@ -359,13 +380,6 @@ int main(int argc, char* argv[])
         fileStream.open(save_prefix + "chains.txt");
         algo.dump_kernel_chains(fileStream, full_output);
         fileStream.close();
-
-
-        // TESTS
-        // TestVectorDot(k1, q, r, s);
-        // TestMatVecMult(k2, t, s, u);
-        // TestVectorDot(k3, v, u, w);
-        // TestVectorDot(k4, x, y, z);
 
     } // end Kokkos scope
     Kokkos::finalize();

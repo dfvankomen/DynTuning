@@ -21,8 +21,15 @@
 #define KOKKOS_DEVICE Cuda
 #endif
 
-// useful helper function for debugging classes without good template
-// type expansion, taken from https://stackoverflow.com/posts/59522794/revisions
+/**
+ * @brief A useful helper function for debugging classes without type expansion
+ *
+ * Use this with a print statement or stream to see the output.
+ * Taken from https://stackoverflow.com/posts/59522794/revisions
+ *
+ * @tparam T Any template type
+ * @return const char* Output string that prints the full name of the function
+ */
 template<typename T>
 const char* prettyprint_function_type()
 {
@@ -33,10 +40,16 @@ const char* prettyprint_function_type()
 #endif
 }
 
-// convenience Eigen typedefs
+/**
+ * @brief A convenience typedef for an Eigen2D matrix with row major order
+ *
+ */
 typedef Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> DynMatrix2D;
 
-// device selector options
+/**
+ * @brief Device selection enum for accessing AUTO, HOST, or DEVICE
+ *
+ */
 enum class DeviceSelector
 {
     AUTO,
@@ -44,6 +57,13 @@ enum class DeviceSelector
     DEVICE
 };
 
+/**
+ * @brief Stream operator for DeviceSelector
+ *
+ * @param out Output stream
+ * @param value The value of the selector
+ * @return std::ostream& Outputs
+ */
 inline std::ostream& operator<<(std::ostream& out, const DeviceSelector value)
 {
     std::map<DeviceSelector, std::string> m;
@@ -65,10 +85,13 @@ inline std::ostream& operator<<(std::ostream& out, const DeviceSelector value)
     }
 */
 
-/// @brief Packs a list of references to class instances into a tuple
-/// @tparam ...ParameterTypes
-/// @param ...params
-/// @return
+/**
+ * @brief Packs a list of references to class instances into a tuple
+ *
+ * @tparam ParameterTypes Inferred parameter types
+ * @param params The parameters that should be packed up
+ * @return std::tuple<ParameterTypes&...> Tuple containing the parameters
+ */
 template<typename... ParameterTypes>
 inline auto pack(ParameterTypes&... params) -> std::tuple<ParameterTypes&...>
 {
@@ -77,11 +100,29 @@ inline auto pack(ParameterTypes&... params) -> std::tuple<ParameterTypes&...>
 }
 
 // utility function for iterating over a tuple of unknown length
+/**
+ * @brief Utility function for iterating over a tuple of unknown length
+ *
+ * @tparam LambdaType Inferred Lambda type
+ * @tparam I Inferred index
+ * @tparam T Inferred type inside the tuple
+ * @param t Input tuple
+ * @param lambda Lambda that should be run
+ * @return std::enable_if<I == sizeof...(T), void>::type
+ */
 template<typename LambdaType, std::size_t I = 0, typename... T>
 inline typename std::enable_if<I == sizeof...(T), void>::type iter_tuple(const std::tuple<T...>& t,
                                                                          const LambdaType& lambda)
 {
 }
+
+/**
+ * @brief Function that actually performs the tuple iteration
+ *
+ * @tparam LambdaType Inferred Lambda type
+ * @tparam I Inferred tuple index
+ * @tparam T Inferred types inside the tuple
+ */
 template<typename LambdaType, std::size_t I = 0, typename... T>
   inline typename std::enable_if <
   I<sizeof...(T), void>::type iter_tuple(const std::tuple<T...>& t, const LambdaType& lambda)
@@ -93,6 +134,16 @@ template<typename LambdaType, std::size_t I = 0, typename... T>
 
 
 // base case for recursion of find_tuple
+/**
+ * @brief Portion of find_tuple if the index wasn't found
+ *
+ * @tparam LambdaType Inferred Lambda type
+ * @tparam I Inferred tuple index
+ * @tparam T Inferred types inside the tuple
+ * @param t Tuple being searched
+ * @param idx Index de1sired
+ * @param lambda Lambda function to run
+ */
 template<typename LambdaType, std::size_t I = 0, typename... T>
 inline typename std::enable_if<I == sizeof...(T), void>::type find_tuple(const std::tuple<T...>& t,
                                                                          std::size_t idx,
@@ -103,15 +154,25 @@ inline typename std::enable_if<I == sizeof...(T), void>::type find_tuple(const s
                             " in requested tuple. The value is too large!");
 }
 
-// all other cases, it's a recursive template that iterates through and finds the item in the tuple
-// note that the lambda must have the right typing cast when calling it, as it needs to receive
-// itself
+/**
+ * @brief All other cases for tuple finding
+ *
+ * In all other cases, we continue to iterate through recursively until the right tuple
+ * is found. Note that the lambda must have the right type casting when calling it,
+ * as it also needs to receive itself.
+ *
+ * @tparam LambdaType Inferred type of the lambda
+ * @tparam I Inferred index of the iteration
+ * @tparam T Inferred types inside the tuple
+ * @param t Tuple being searched
+ * @param idx Index de1sired
+ * @param lambda Lambda function to run
+ */
 template<typename LambdaType, std::size_t I = 0, typename... T>
   inline typename std::enable_if < I<sizeof...(T), void>::type find_tuple(const std::tuple<T...>& t,
                                                                           std::size_t idx,
                                                                           const LambdaType& lambda)
 {
-
     // if we've found the index, we can execute the lambda and return out
     if (I == idx)
     {
@@ -141,7 +202,13 @@ get_tuple_item(int i, const std::tuple<T...>& t)
 }
 */
 
-
+/**
+ * @brief Set the device to use
+ *
+ * @param argc Number of program arguments
+ * @param argv Program arguments
+ * @return DeviceSelector Device that should be used for the framework
+ */
 inline DeviceSelector set_device(int argc, char* argv[])
 {
     DeviceSelector device = DeviceSelector::AUTO;
@@ -169,6 +236,13 @@ inline DeviceSelector set_device(int argc, char* argv[])
     return device;
 }
 
+/**
+ * @brief Set the size of the data N
+ *
+ * @param argc Number of program arguments
+ * @param argv Program arguments
+ * @return int Size to be used for the data
+ */
 inline int set_N(int argc, char* argv[])
 {
     int N = 5;
@@ -185,6 +259,13 @@ inline int set_N(int argc, char* argv[])
     return N;
 }
 
+/**
+ * @brief Set if reordering should be used
+ *
+ * @param argc Number of program arguments
+ * @param argv Program arguments
+ * @return bool Desired reordering option
+ */
 inline bool set_reordering(int argc, char* argv[])
 {
     bool flag = false;
@@ -202,6 +283,13 @@ inline bool set_reordering(int argc, char* argv[])
     return flag;
 }
 
+/**
+ * @brief Set if initialization should be done
+ *
+ * @param argc Number of program arguments
+ * @param argv Program arguments
+ * @return int Desired initalization option
+ */
 inline int set_initialize(int argc, char* argv[])
 {
     bool flag = true;
@@ -219,6 +307,13 @@ inline int set_initialize(int argc, char* argv[])
     return flag;
 }
 
+/**
+ * @brief Set the number of optimization simulations to run
+ *
+ * @param argc Number of program arguments
+ * @param argv Program arguments
+ * @return int Desired number of simulations
+ */
 inline int set_num_sims(int argc, char* argv[])
 {
     int N = 5;
@@ -235,6 +330,13 @@ inline int set_num_sims(int argc, char* argv[])
     return N;
 }
 
+/**
+ * @brief Set the number of times chains should be run for profiling
+ *
+ * @param argc Number of program arguments
+ * @param argv Program arguments
+ * @return int Desired number of chain runs
+ */
 inline int set_num_chain_runs(int argc, char* argv[])
 {
     int N = 1;
@@ -251,6 +353,13 @@ inline int set_num_chain_runs(int argc, char* argv[])
     return N;
 }
 
+/**
+ * @brief Set the number of output rows to print
+ *
+ * @param argc Number of program arguments
+ * @param argv Program arguments
+ * @return int Desired number of output rows
+ */
 inline int set_num_output_truncate(int argc, char* argv[])
 {
     int N = 25;
@@ -267,8 +376,13 @@ inline int set_num_output_truncate(int argc, char* argv[])
     return N;
 }
 
-
-
+/**
+ * @brief Set the save prefix for results, includes folder
+ *
+ * @param argc Number of program arguments
+ * @param argv Program arguments
+ * @return std::string The save prefix
+ */
 inline std::string set_save_prefix(int argc, char* argv[])
 {
     std::string prefix = "output";
@@ -292,6 +406,13 @@ inline std::string set_save_prefix(int argc, char* argv[])
 }
 
 #ifdef DYNTUNE_SINGLE_CHAIN_RUN
+/**
+ * @brief Set the ID for the single chain that should be run, useful for debugging
+ *
+ * @param argc Number of program arguments
+ * @param argv Program arguments
+ * @return int ID of the chain to run
+ */
 inline unsigned int set_single_chain_run(int argc, char* argv[])
 {
     unsigned int N = 0;
@@ -309,6 +430,13 @@ inline unsigned int set_single_chain_run(int argc, char* argv[])
 }
 #endif
 
+
+/**
+ * @brief Helper function to print if something is a reference
+ *
+ * @tparam T Inferred type
+ * @param arg The argument to the function
+ */
 template<typename T>
 inline void print_is_reference(const T& arg)
 {

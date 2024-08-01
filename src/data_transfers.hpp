@@ -11,6 +11,14 @@
 // #define DYNTUNE_DEBUG_DATA_TRANSFER
 
 // TODO: add timers back in (could do a null pointer as default)
+
+/**
+ * @brief Function that transfers data from host to device
+ *
+ * @tparam ViewCollection Inferred type of views
+ * @param tuple_idx Index of tuple that needs to be transferred
+ * @param view_collection All views available
+ */
 template<typename ViewCollection>
 void transfer_data_host_to_device(size_t tuple_idx, ViewCollection& view_collection)
 {
@@ -109,6 +117,16 @@ void transfer_data_host_to_device(size_t tuple_idx, ViewCollection& view_collect
 }
 
 
+/**
+ * @brief Function that transfers data from host to device, includes timer access
+ *
+ * @tparam ViewCollection Inferred type of views
+ * @tparam Timer Inferred type of timer object
+ * @param tuple_idx Index of tuple that needs to be transferred
+ * @param view_collection All views available
+ * @param elapsed Current elapsed time
+ * @param timer Timer object used
+ */
 template<typename ViewCollection, typename Timer>
 void transfer_data_host_to_device(size_t tuple_idx,
                                   ViewCollection& view_collection,
@@ -124,6 +142,13 @@ void transfer_data_host_to_device(size_t tuple_idx,
     elapsed += timer.seconds();
 }
 
+/**
+ * @brief Function that transfers device from device to host
+ *
+ * @tparam ViewCollection Inferred type of views
+ * @param tuple_idx Index of tuple that needs to be transferred
+ * @param view_collection All views available
+ */
 template<typename ViewCollection>
 void transfer_data_device_to_host(size_t tuple_idx, ViewCollection& view_collection)
 {
@@ -224,6 +249,16 @@ void transfer_data_device_to_host(size_t tuple_idx, ViewCollection& view_collect
 }
 
 
+/**
+ * @brief Function that transfers data from device to host, includes timer access
+ *
+ * @tparam ViewCollection Inferred type of views
+ * @tparam Timer Inferred type of timer object
+ * @param tuple_idx Index of tuple that needs to be transferred
+ * @param view_collection All views available
+ * @param elapsed Current elapsed time
+ * @param timer Timer object used
+ */
 template<typename ViewCollection, typename Timer>
 void transfer_data_device_to_host(size_t tuple_idx,
                                   ViewCollection& view_collection,

@@ -5,10 +5,17 @@
 #include <string>
 #include <tuple>
 
-// We need the name string to be embedded in the template args, but std::string
-// is not structural and does not use external linkage, so it is not allowed.
-// So, we store the hash of the string instead, and this provides the compile-time hash.
-// Credit: https://www.reddit.com/r/cpp/comments/jkw84k/strings_in_switch_statements_using_constexp/
+/**
+ * @brief Create a compile-time hash from a string
+ *
+ * We need the name string to be embedded in the template args, but std::string
+ * is not structural and does not use external linkage, so it is not allowed.
+ * So, we store the hash of the string instead, and this provides the compile-time hash.
+ * Credit: https://www.reddit.com/r/cpp/comments/jkw84k/strings_in_switch_statements_using_constexp/
+ *
+ * @param str String to hash
+ * @return constexpr std::size_t Hashed string
+ */
 constexpr std::size_t hash(const char* str)
 {
     const long long p            = 131;
@@ -23,8 +30,14 @@ constexpr std::size_t hash(const char* str)
     return total;
 }
 
-// Provides a struct to hold the hash as part of the template parameters.
-// Intends to create a unique type for each "name" string, though collisions could occur.
+/**
+ * @brief Struct to store the Hashed Name
+ *
+ * Provides a struct to hold the hash as part of the template parameters.
+ * Intends to create a unique type for each "name" string, though collisions could occur.
+ *
+ * @tparam NameHash
+ */
 template<std::size_t NameHash>
 struct HashedName
 {
@@ -32,14 +45,35 @@ struct HashedName
     static constexpr std::size_t hash = NameHash;
 };
 
-// Fall back if I == size of tuple, returns -1
+
+/**
+ * @brief Finds value of tuple based on hash, fallback function
+ *
+ * Fall back if I == size of tuple, returns -1
+ *
+ * @tparam HashToFind Input Hash to Find
+ * @tparam I Inferred index type
+ * @tparam Tp Internal tuple type
+ * @param t Tuple to search through
+ * @return constexpr std::enable_if<I == sizeof...(Tp), std::size_t>::type
+ */
 template<std::size_t HashToFind, std::size_t I = 0, typename... Tp>
 constexpr typename std::enable_if<I == sizeof...(Tp), std::size_t>::type find(
   const std::tuple<Tp...>& t)
 {
     return -1;
 }
-// Returns the index of in the tuple for the name that matches HashToFind
+
+/**
+ * @brief Find index of tuple that matches hash
+ *
+ * Returns the index of in the tuple for the name that matches HashToFind
+ *
+ * @tparam HashToFind Input Hash to find
+ * @tparam I Inferred index type
+ * @tparam Tp Internal tuple type
+ * @param t Tuple to search through
+ */
 template<std::size_t HashToFind, std::size_t I = 0, typename... Tp>
   constexpr typename std::enable_if <
   I<sizeof...(Tp), std::size_t>::type find(const std::tuple<Tp...>& t)

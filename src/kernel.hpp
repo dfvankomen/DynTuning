@@ -10,27 +10,58 @@
 #include <type_traits>
 #include <utility>
 
+/**
+ * @brief Struct to store kernel options
+ *
+ */
 struct KernelOptions
 {
+    // List of devices to use
     std::vector<DeviceSelector> devices;
 };
 
 
+/**
+ * @brief Hyperparameter Storage
+ *
+ * This is used to store what hyperparameters a given kernel needs.
+ * It's hard to get the parameters at runtime, so this struct is made to store
+ * what the compiler decided on so it can be easily accessed without templating.
+ */
 struct HyperParameterStorage
 {
+    // Number of threads to use
     std::size_t threads;
+    // Number of blocks to use
     std::size_t blocks;
 
+    /**
+     * @brief Convert struct to string
+     *
+     * @return std::string Output string
+     */
     inline std::string to_string() const
     {
         return "t,b: " + std::to_string(threads) + "," + std::to_string(blocks);
     }
+    /**
+     * @brief Helper function to convert struct to string for CSV
+     *
+     * @return std::string Output string
+     */
     inline std::string to_string_csv() const
     {
         return std::to_string(threads) + "," + std::to_string(blocks);
     }
 };
 
+/**
+ * @brief Stream output operator for HyperParameterStorage struct
+ *
+ * @param os
+ * @param hp
+ * @return std::ostream&
+ */
 inline std::ostream& operator<<(std::ostream& os, const HyperParameterStorage& hp)
 {
     os << "threads: " << hp.threads << " blocks: " << hp.blocks;
@@ -39,12 +70,28 @@ inline std::ostream& operator<<(std::ostream& os, const HyperParameterStorage& h
 
 
 
-// dummy struct for no linspace options
+/**
+ * @brief Dummy struct for no options into Hyperparameters
+ *
+ */
 struct NoOptions
 {
 };
 
 
+/**
+ * @brief Struct to store and use various hyperparameters for Linspace
+ *
+ * This is particularly useful for defining a type and then passing it through
+ * as a type for easy extraction of the values.
+ *
+ * @tparam StartThreads
+ * @tparam EndThreads
+ * @tparam NThreads
+ * @tparam StartBlocks
+ * @tparam EndBlocks
+ * @tparam NBlocks
+ */
 template<unsigned int StartThreads,
          unsigned int EndThreads,
          unsigned int NThreads,
@@ -61,6 +108,12 @@ struct LinspaceOptions
     static constexpr unsigned int nblocks  = NBlocks;
 };
 
+/**
+ * @brief Single Launch Bound to force Kokkos to use set blocks and threads
+ *
+ * @tparam MaxThreads
+ * @tparam MinBlocks
+ */
 template<unsigned int MaxThreads, unsigned int MinBlocks>
 struct SingleLaunchBound
 {
@@ -68,6 +121,11 @@ struct SingleLaunchBound
     static constexpr unsigned int minB = MinBlocks;
 };
 
+/**
+ * @brief A wrapper struct to use as a type for Hyperparameters
+ *
+ * @tparam ConfigOption NoOptions, SingleLaunchBound, and LinspaceOptions are all accepted
+ */
 template<typename ConfigOption = NoOptions>
 struct HyperparameterOptions
 {
@@ -75,13 +133,22 @@ struct HyperparameterOptions
 };
 
 
-// substitution failure is not an error
+/**
+ * @brief SFINAE Function for determining if struct is Linspace Options at compile time, FALSE
+ *
+ * @tparam T
+ */
 template<typename T>
 struct is_linspace_options : std::false_type
 {
 };
 
 
+/**
+ * @brief SFINAE Function for determining if struct is Linspace Options at compile time, TRUE
+ *
+ * @tparam T
+ */
 template<unsigned int StartThreads,
          unsigned int EndThreads,
          unsigned int NThreads,
@@ -94,20 +161,41 @@ struct is_linspace_options<
 {
 };
 
+/**
+ * @brief Compile-time check for if something is a LinspaceOptions object
+ *
+ * @tparam T
+ */
 template<typename T>
 inline constexpr bool is_linspace_options_v = is_linspace_options<T>::value;
 
-// is launchbounds options
+
+/**
+ * @brief SFINAE Function for determining if struct is LaunchBounds at compile time, FALSE
+ *
+ * @tparam T
+ */
 template<typename T>
 struct is_launchbounds_options : std::false_type
 {
 };
 
+/**
+ * @brief SFINAE Function for determining if struct is LaunchBounds at compile time, TRUE
+ *
+ * @tparam T
+ */
 template<unsigned int maxT, unsigned int minB>
 struct is_launchbounds_options<SingleLaunchBound<maxT, minB>> : std::true_type
 {
 };
 
+
+/**
+ * @brief Compile-time check for if something is a LaunchBounds object
+ *
+ * @tparam T
+ */
 template<typename T>
 inline constexpr bool is_launchbounds_options_v = is_launchbounds_options<T>::value;
 
@@ -126,6 +214,7 @@ template<int KernelRank,
          typename DeviceExecutionPolicyData>
 class Kernel
 {
+    // TODO: the DeviceExecutionPolicyData type can probably be inferred
   public:
     static constexpr int rank = KernelRank;
 
@@ -223,6 +312,18 @@ class Kernel
 // Helpers
 //=============================================================================
 
+/**
+ * @brief Wrapper function that properly calls a kernel
+ *
+ * @tparam KernelRank
+ * @tparam ViewsType
+ * @tparam RangePolicyType
+ * @tparam FunctorType
+ * @param name Name of the kernel
+ * @param range_policy Target range policy
+ * @param views The views
+ * @param functor Functor pointer
+ */
 template<int KernelRank, typename ViewsType, typename RangePolicyType, typename FunctorType>
 inline void call_kernel(const std::string& name,
                         const RangePolicyType& range_policy,
@@ -246,6 +347,14 @@ inline void call_kernel(const std::string& name,
     }
 }
 
+/**
+ * @brief Wrapper function that properly calls a kernel
+ *
+ * @tparam KernelType
+ * @param k The Kernel object
+ * @param device_selector The device selector
+ * @param idx The index for the hyperparameter selection
+ */
 template<typename KernelType>
 inline void call_kernel(KernelType& k, DeviceSelector device_selector, std::size_t idx = 0)
 {
@@ -281,6 +390,13 @@ inline void call_kernel(KernelType& k, DeviceSelector device_selector, std::size
     }
 }
 
+/**
+ * @brief Maps kernel input and output to a mask
+ *
+ * @tparam T
+ * @param args
+ * @return auto
+ */
 template<typename... T>
 inline auto kernel_io_map(T&... args)
 {
@@ -289,7 +405,15 @@ inline auto kernel_io_map(T&... args)
 }
 
 
-
+/**
+ * @brief Compile-time calculation of lin-space outputing integers
+ *
+ * @param start
+ * @param end
+ * @param nsteps
+ * @param i
+ * @return constexpr auto
+ */
 constexpr auto linspace_val(double start, double end, unsigned int nsteps, unsigned int i)
 {
     return static_cast<unsigned int>(start + i * ((end - start) / (nsteps - 1)));
@@ -335,6 +459,15 @@ constexpr auto _crpd_inner(const RangeExtent<KernelRank>& extent, std::index_seq
       _crpd_innermost<KernelRank, ExecutionSpace, LinspaceOptions, I>(extent)...);
 }
 
+/**
+ * @brief Create a range policy device object
+ *
+ * @tparam KernelRank
+ * @tparam ExecutionSpace
+ * @tparam LinspaceOptions
+ * @param extent Extent of the kernel
+ * @return constexpr auto
+ */
 template<int KernelRank, typename ExecutionSpace, typename LinspaceOptions>
 constexpr auto create_range_policy_device(const RangeExtent<KernelRank>& extent)
 {
@@ -350,6 +483,14 @@ constexpr auto create_range_policy_device(const RangeExtent<KernelRank>& extent)
 }
 
 
+/**
+ * @brief Create a range policy device object
+ *
+ * @tparam KernelRank
+ * @tparam ExecutionSpace
+ * @param extent
+ * @return constexpr auto
+ */
 template<int KernelRank, typename ExecutionSpace = Kokkos::KOKKOS_DEVICE>
 constexpr auto create_range_policy_device(const RangeExtent<KernelRank>& extent)
 {
@@ -359,7 +500,7 @@ constexpr auto create_range_policy_device(const RangeExtent<KernelRank>& extent)
     return std::make_tuple(DeviceRangePolicy(extent.lower, extent.upper));
 }
 
-// Linspace Hyper Parameter Storage
+// innermost function for generating the hyperparameter storage
 template<typename LinspaceOptions, unsigned int K>
 constexpr auto _crpdc_innermost()
 {
@@ -392,6 +533,12 @@ constexpr auto _crpdc_inner(std::index_sequence<I...>)
     //                        _crpdc_innermost<LinspaceOptions, I>()...);
 }
 
+/**
+ * @brief Create a range policy device collection object at compile time
+ *
+ * @tparam LinspaceOptions
+ * @return constexpr auto
+ */
 template<typename LinspaceOptions>
 constexpr auto create_range_policy_device_collection()
 {
@@ -406,12 +553,26 @@ constexpr auto create_range_policy_device_collection()
 }
 
 
+/**
+ * @brief Create a range policy device collection object at compile time, empty options
+ *
+ * @return auto
+ */
 inline auto create_range_policy_device_collection()
 {
     // just return a vector with one type
     return std::vector<HyperParameterStorage>({ HyperParameterStorage({ 0, 0 }) });
 }
 
+/**
+ * @brief Create a standard policy object
+ *
+ * @tparam KernelRank
+ * @tparam LaunchBoundsType
+ * @tparam ExecutionSpace
+ * @param extent
+ * @return constexpr auto
+ */
 template<int KernelRank, typename LaunchBoundsType, typename ExecutionSpace = Kokkos::KOKKOS_DEVICE>
 constexpr auto create_standard_policy(const RangeExtent<KernelRank>& extent)
 {
@@ -424,6 +585,15 @@ constexpr auto create_standard_policy(const RangeExtent<KernelRank>& extent)
     return std::make_tuple(DeviceRangePolicy(extent.lower, extent.upper));
 }
 
+/**
+ * @brief Create the policies from hyperparameters based on the hyperparameter type
+ *
+ * @tparam KernelRank
+ * @tparam DeviceType
+ * @tparam HyperparamType
+ * @param extent
+ * @return constexpr auto
+ */
 template<int KernelRank, typename DeviceType, typename HyperparamType>
 constexpr auto make_policy_from_hyperparameters(const RangeExtent<KernelRank>& extent)
 {
@@ -448,6 +618,12 @@ constexpr auto make_policy_from_hyperparameters(const RangeExtent<KernelRank>& e
     }
 }
 
+/**
+ * @brief Creates the hyperparameter vector for printing and output
+ *
+ * @tparam HyperparamType
+ * @return constexpr auto Vector of values for HyperParameters
+ */
 template<typename HyperparamType>
 constexpr auto make_hyperparameter_vector()
 {

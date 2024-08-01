@@ -14,6 +14,7 @@
 #include "data.hpp"
 #include "kernel.hpp"
 #include "kernel_matmatmult.hpp"
+#include "kernel_matrix_weirdsum.hpp"
 
 #include <cstddef>
 #include <decl/Kokkos_Declare_OPENMP.hpp>
@@ -24,7 +25,7 @@
 typedef Kokkos::Cuda DeviceExecSpace;
 typedef Kokkos::RangePolicy<DeviceExecSpace> device_range_policy;
 
-#define KernelToUse KernelMatMatMult
+#define KernelToUse KernelMatWeirdSum
 
 int main(int argc, char* argv[])
 {
@@ -70,7 +71,7 @@ int main(int argc, char* argv[])
 
         // go through all of the options and see how things change
         // build up the kernel
-        const unsigned int maxthreads = 256;
+        const unsigned int maxthreads = 1024;
 
         const unsigned int num_total_run = 11;
 
