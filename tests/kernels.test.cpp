@@ -25,7 +25,6 @@ TEST_CASE("Kernel: Verify VectorDot Host and Device", "kernel")
 {
     const size_t N = 100;
 
-    Kokkos::initialize();
     {
         std::vector<double> a(N);
         std::vector<double> b(N);
@@ -103,7 +102,6 @@ TEST_CASE("Kernel: Verify VectorDot Host and Device", "kernel")
 
         // done!
     }
-    Kokkos::finalize();
 }
 
 
@@ -112,7 +110,6 @@ TEST_CASE("Kernel: Verify MatVecMult Host and Device", "kernel")
 {
     const size_t N = 10;
 
-    Kokkos::initialize();
     {
         DynMatrix2D A(N, N);
         std::vector<double> b(N);
@@ -195,7 +192,6 @@ TEST_CASE("Kernel: Verify MatVecMult Host and Device", "kernel")
 
         // done!
     }
-    Kokkos::finalize();
 }
 
 TEST_CASE("Kernel: Verify MatVecMult Non-Square Host and Device", "kernel")
@@ -203,7 +199,6 @@ TEST_CASE("Kernel: Verify MatVecMult Non-Square Host and Device", "kernel")
     const size_t N = 10;
     const size_t M = 15;
 
-    Kokkos::initialize();
     {
         DynMatrix2D A(N, M);
         std::vector<double> b(M);
@@ -285,7 +280,6 @@ TEST_CASE("Kernel: Verify MatVecMult Non-Square Host and Device", "kernel")
 
         // done!
     }
-    Kokkos::finalize();
 }
 
 
@@ -293,7 +287,6 @@ TEST_CASE("Kernel: Verify Square VectorOuter Host and Device", "kernel")
 {
     const size_t N = 10;
 
-    Kokkos::initialize();
     {
         std::vector<double> a(N);
         std::vector<double> b(N);
@@ -376,7 +369,6 @@ TEST_CASE("Kernel: Verify Square VectorOuter Host and Device", "kernel")
         // print_view(b_host);
         // print_view(C_host);
     }
-    Kokkos::finalize();
 }
 
 
@@ -385,7 +377,6 @@ TEST_CASE("Kernel: Verify Non-Square VectorOuter Host and Device", "kernel")
     const size_t N = 10;
     const size_t M = 15;
 
-    Kokkos::initialize();
     {
         std::vector<double> a(N);
         std::vector<double> b(M);
@@ -468,14 +459,12 @@ TEST_CASE("Kernel: Verify Non-Square VectorOuter Host and Device", "kernel")
         // print_view(b_host);
         // print_view(C_host);
     }
-    Kokkos::finalize();
 }
 
 TEST_CASE("Kernel: Verify Square MatMatMult Host and Device", "kernel")
 {
     const size_t N = 10;
 
-    Kokkos::initialize();
     {
         DynMatrix2D A(N, N);
         DynMatrix2D B(N, N);
@@ -567,7 +556,6 @@ TEST_CASE("Kernel: Verify Square MatMatMult Host and Device", "kernel")
 
         // done!
     }
-    Kokkos::finalize();
 }
 
 
@@ -577,7 +565,6 @@ TEST_CASE("Kernel: Verify Non-Square MatMatMult Host and Device", "kernel")
     const size_t M = 4;
     const size_t O = 5;
 
-    Kokkos::initialize();
     {
         DynMatrix2D A(N, M);
         DynMatrix2D B(M, O);
@@ -669,7 +656,6 @@ TEST_CASE("Kernel: Verify Non-Square MatMatMult Host and Device", "kernel")
 
         // done!
     }
-    Kokkos::finalize();
 }
 
 
@@ -677,7 +663,6 @@ TEST_CASE("Kernel: Verify Kernel w/ Rank 0", "kernel")
 {
     const size_t N = 100;
 
-    Kokkos::initialize();
     {
         std::vector<double> a(N);
         std::vector<double> b(N);
@@ -750,7 +735,6 @@ TEST_CASE("Kernel: Verify Kernel w/ Rank 0", "kernel")
 
         // done!
     }
-    Kokkos::finalize();
 }
 
 
@@ -758,7 +742,6 @@ TEST_CASE("Kernel: Verify Square gemm Kokkos-Kernels", "kernel")
 {
     const size_t N = 10;
 
-    Kokkos::initialize();
     {
         DynMatrix2D A(N, N);
         DynMatrix2D B(N, N);
@@ -847,7 +830,6 @@ TEST_CASE("Kernel: Verify Square gemm Kokkos-Kernels", "kernel")
 
         // done!
     }
-    Kokkos::finalize();
 }
 
 
@@ -857,7 +839,6 @@ TEST_CASE("Kernel: Verify Non-Square gemm Kokkos-Kernels", "kernel")
     const size_t M = 4;
     const size_t O = 5;
 
-    Kokkos::initialize();
     {
         DynMatrix2D A(N, M);
         DynMatrix2D B(M, O);
@@ -951,7 +932,6 @@ TEST_CASE("Kernel: Verify Non-Square gemm Kokkos-Kernels", "kernel")
 
         // done!
     }
-    Kokkos::finalize();
 }
 
 
@@ -960,7 +940,6 @@ TEST_CASE("Kernel: Verify Square gemm Eigen+KokkosKernel", "kernel")
 {
     const size_t N = 10;
 
-    Kokkos::initialize();
     {
         DynMatrix2D A(N, N);
         DynMatrix2D B(N, N);
@@ -1049,7 +1028,6 @@ TEST_CASE("Kernel: Verify Square gemm Eigen+KokkosKernel", "kernel")
 
         // done!
     }
-    Kokkos::finalize();
 }
 
 
@@ -1059,7 +1037,6 @@ TEST_CASE("Kernel: Verify Non-Square gemm Eigen+KokkosKernel", "kernel")
     const size_t M = 4;
     const size_t O = 5;
 
-    Kokkos::initialize();
     {
         DynMatrix2D A(N, M);
         DynMatrix2D B(M, O);
@@ -1153,5 +1130,4 @@ TEST_CASE("Kernel: Verify Non-Square gemm Eigen+KokkosKernel", "kernel")
 
         // done!
     }
-    Kokkos::finalize();
 }

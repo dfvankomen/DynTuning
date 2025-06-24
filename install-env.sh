@@ -1,11 +1,12 @@
 #!/bin/bash
-  
+
 # install dependencies
 sudo apt-get update
 sudo apt-get install -y cmake gdb cmake-curses-gui
 
 # install cuda
 if [[ ! -d "${CUDA_HOME}" ]]; then
+  echo "NOW INSTALLING CUDA TO $CUDA_HOME"
   cd ~
   # make the src and opt directores if they don't exist, otherwise cuda installer will under root
   mkdir -p ~/src
@@ -19,6 +20,7 @@ fi
 
 # install kokkos
 if [[ ! -d "${KOKKOS_HOME}" ]]; then
+  echo "NOW INSTALLING KOKKOS TO $KOKKOS_HOME"
   cd ~
   # -p asserts that they don't get overwritten
   mkdir -p ~/opt
@@ -56,8 +58,8 @@ if [[ ! -d "${KOKKOS_HOME}" ]]; then
   make -j "${MAKE_NPROCS}" install
 fi
 
-
 if [[ ! -d "${KOKKOS_KERNELS_HOME}" ]]; then
+  echo "NOW INSTALLING KOKKOS_KERNELS TO $KOKKOS_KERNELS_HOME"
   cd ~
   mkdir -p ~/opt
   mkdir -p ~/src
@@ -74,4 +76,3 @@ if [[ ! -d "${KOKKOS_KERNELS_HOME}" ]]; then
     -DKokkosKernels_DIR="${KOKKOS_KERNELS_HOME}/lib/cmake/KokkosKernels"
   make -j "${MAKE_NPROCS}" install
 fi
-

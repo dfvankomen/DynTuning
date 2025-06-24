@@ -1,11 +1,12 @@
 #pragma once
 
-#include "Eigen"
 #include "Kokkos_Core.hpp"
 #include "common.hpp"
 #include "kernel.hpp"
 #include "range.hpp"
 #include "view.hpp"
+
+#include <Eigen/Eigen>
 
 
 

@@ -30,7 +30,7 @@ if [[ "${1}" == "narwhal" ]]; then
 
   # enable nvidia support
   export SINGULARITY_NV=1
-  
+
   # set the Kokkos_ARCH values
   export CPU_ARCH=ZEN2
   export GPU_ARCH=VOLTA70
@@ -43,7 +43,7 @@ if [[ "${1}" == "narwhal" ]]; then
   export OMP_PROC_BIND=spread
 
 elif [[ "${1}" == "googlecloud" ]]; then
-  
+
   # set home paths
   export CUDA_HOME=~/opt/cuda
   export KOKKOS_HOME=~/opt/kokkos
@@ -52,11 +52,11 @@ elif [[ "${1}" == "googlecloud" ]]; then
   # ensure CUDA is on the path
   export PATH="${CUDA_HOME}/bin:${PATH}"
   export LD_LIBRARY_PATH="${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}"
-  
+
   # ensure KOKKOS is on the path
   export PATH="${KOKKOS_HOME}/bin:${PATH}"
   export PATH="${KOKKOS_KERNELS_HOME}/bin:${PATH}"
-  
+
   # set the Kokkos_ARCH values
   # export CPU_ARCH=SKX
   # DVK: the arch I have on Google is a Haswell Xeon INtel CPU
@@ -76,7 +76,7 @@ fi
 
 # don't use exit in sourceable scripts
 if [[ "${error}" == 0 ]]; then
-  
+
   # set project executable name
   export exe_name="DynamicTuningPrototype"
 

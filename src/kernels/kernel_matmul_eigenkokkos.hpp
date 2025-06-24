@@ -1,12 +1,13 @@
 #pragma once
 
-#include "Core"
 #include "KokkosBlas3_gemm.hpp"
 #include "Kokkos_Core.hpp"
 #include "common.hpp"
 #include "kernel.hpp"
 #include "range.hpp"
 #include "view.hpp"
+
+#include <Eigen/Core>
 
 struct FunctorKernel_MatMul_Eigen_Host
 {

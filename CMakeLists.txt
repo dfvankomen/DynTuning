@@ -61,12 +61,20 @@ if(DYNTUNE_DEBUG_ENABLED)
   add_definitions(-DDYNTUNE_DEBUG_ENABLED)
 endif()
 
+find_package(Eigen3 REQUIRED)
+if (TARGET Eigen3::Eigen)
+  message(STATUS "Eigen3 was found!")
+else()
+  message(FATAL_ERROR "Eigen3 was not found!")
+endif()
+
+
 # Build
 add_executable(exe src/main.cpp)
 target_link_libraries(exe PRIVATE Kokkos::kokkos)
+target_link_libraries(exe PRIVATE Eigen3::Eigen)
 target_include_directories(exe PRIVATE
-	"${CMAKE_CURRENT_SOURCE_DIR}/eigen/Eigen"
-	"${CUDA_HOME}/include"
+ "${CUDA_HOME}/include"
   src
   src/kernels
 )
@@ -89,9 +97,9 @@ set_target_properties(exe PROPERTIES OUTPUT_NAME ${PROJECT_NAME})
 # test build
 add_executable(kernelBlocks src/test_kernel_block_sizes.cpp)
 target_link_libraries(kernelBlocks PRIVATE Kokkos::kokkos)
+target_link_libraries(kernelBlocks PRIVATE Eigen3::Eigen)
 target_include_directories(kernelBlocks PRIVATE
-	"${CMAKE_CURRENT_SOURCE_DIR}/eigen/Eigen"
-	"${CUDA_HOME}/include"
+ "${CUDA_HOME}/include"
   src
   src/kernels
 )
@@ -111,9 +119,10 @@ target_compile_definitions(kernelBlocks PUBLIC
 # test for threads
 add_executable(kernelThreads src/test_kernel_thread_sizes.cpp)
 target_link_libraries(kernelThreads PRIVATE Kokkos::kokkos)
+target_link_libraries(kernelThreads PRIVATE Eigen3::Eigen)
 target_include_directories(kernelThreads PRIVATE
-	"${CMAKE_CURRENT_SOURCE_DIR}/eigen/Eigen"
-	"${CUDA_HOME}/include"
+ "${CMAKE_CURRENT_SOURCE_DIR}/eigen/Eigen"
+ "${CUDA_HOME}/include"
   src
   src/kernels
 )
@@ -142,13 +151,13 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(Catch2)
 
-add_executable(tests tests/data.test.cpp tests/kernels.test.cpp tests/optimizer.test.cpp)
+add_executable(tests tests/main.cpp tests/data.test.cpp tests/kernels.test.cpp tests/optimizer.test.cpp)
 target_link_libraries(tests PRIVATE Catch2::Catch2WithMain)
 target_link_libraries(tests PRIVATE Kokkos::kokkos)
 target_link_libraries(tests PRIVATE Kokkos::kokkoskernels)
+target_link_libraries(tests PRIVATE Eigen3::Eigen)
 target_include_directories(tests PRIVATE
-	"${CMAKE_CURRENT_SOURCE_DIR}/eigen/Eigen"
-	"${CUDA_HOME}/include"
+ "${CUDA_HOME}/include"
   src
   src/kernels
 )
@@ -165,7 +174,10 @@ target_compile_definitions(tests PUBLIC
 )
 
 # add catch 2 to the cmake module path, then include CTest and Catch
-list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
-include(CTest)
-include(Catch)
-catch_discover_tests(tests)
+# NOTE: this will fail on the docker build, so ENABLE_RUN_TESTS is set to off by default
+if(ENABLE_RUN_TESTS)
+  list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
+  include(CTest)
+  include(Catch)
+  catch_discover_tests(tests)
+endif()

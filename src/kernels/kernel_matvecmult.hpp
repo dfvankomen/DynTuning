@@ -1,10 +1,11 @@
 #pragma once
 
-#include "Eigen"
 #include "Kokkos_Core.hpp"
 #include "common.hpp"
 #include "kernel.hpp"
 #include "range.hpp"
+
+#include <Eigen/Eigen>
 
 // https://github.com/kokkos/kokkos-tutorials/blob/main/Exercises/mdrange/Solution/exercise_mdrange_solution.cpp
 

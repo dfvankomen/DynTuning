@@ -8,7 +8,7 @@
 #include <sstream>
 
 // #ifdef USE_EIGEN
-#include "Eigen"
+#include <Eigen/Eigen>
 // #endif
 
 // ensure KOKKOS_HOST is set

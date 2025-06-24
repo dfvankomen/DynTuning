@@ -6,6 +6,7 @@
 #include "data_transfers.hpp"
 #include "kernel_matvecmult.hpp"
 #include "kernel_vectordot.hpp"
+#include "test_config.hpp"
 #include "view.hpp"
 
 #include <catch2/catch_test_macros.hpp>
@@ -23,16 +24,12 @@ TEST_CASE("Optimizer: Test No Dependencies, No Reordering")
     const size_t M        = 20;
     const bool reordering = false;
 
-    const DeviceSelector device = DeviceSelector::AUTO;
-
     // execution options
     KernelOptions options;
-    if (device != DeviceSelector::AUTO)
-        options = { { device } };
+    if (GLOBAL_DEVICE != DeviceSelector::AUTO)
+        options = { { GLOBAL_DEVICE } };
     else
         options = { { DeviceSelector::HOST, DeviceSelector::DEVICE } };
-
-    Kokkos::initialize();
     {
 
 #include "helpers/optimizer_build_views.cpp"
@@ -111,9 +108,17 @@ TEST_CASE("Optimizer: Test No Dependencies, No Reordering")
         }
 
         // also check the number of chains!
-        // in this case, each of the two can either both be on host, one be on device, or both be on
-        // device. that makes 4.
-        REQUIRE(algo.kernel_chains.size() == 4);
+        if (options.devices.size() == 1)
+        {
+            // if there's only one device, there's only one chain!
+            REQUIRE(algo.kernel_chains.size() == 1);
+        }
+        else
+        {
+            // in this case, each of the two can either both be on host, one be on device, or both
+            // be on device. that makes 4.
+            REQUIRE(algo.kernel_chains.size() == 4);
+        }
 
         // then set up our optimizer verification function to test both of our outputs!
         algo.set_validation_function([&a, &b, &c, &d, &e, &f, &c_truth, &f_truth, &N]()
@@ -141,7 +146,6 @@ TEST_CASE("Optimizer: Test No Dependencies, No Reordering")
 
         // DONE
     }
-    Kokkos::finalize();
 }
 
 
@@ -152,16 +156,13 @@ TEST_CASE("Optimizer: Test No Dependencies, W/ Reordering")
     const size_t M        = 20;
     const bool reordering = true;
 
-    const DeviceSelector device = DeviceSelector::AUTO;
-
     // execution options
     KernelOptions options;
-    if (device != DeviceSelector::AUTO)
-        options = { { device } };
+    if (GLOBAL_DEVICE != DeviceSelector::AUTO)
+        options = { { GLOBAL_DEVICE } };
     else
         options = { { DeviceSelector::HOST, DeviceSelector::DEVICE } };
 
-    Kokkos::initialize();
     {
 
 #include "helpers/optimizer_build_views.cpp"
@@ -240,9 +241,17 @@ TEST_CASE("Optimizer: Test No Dependencies, W/ Reordering")
         }
 
         // also check the number of chains!
-        // in this case, each of the two can either both be on host, one be on device, or both be on
-        // device. that makes 8 since they can go in either order.
-        REQUIRE(algo.kernel_chains.size() == 8);
+        if (options.devices.size() == 1)
+        {
+            // with only one device, and the data dependencies, we only have 2
+            REQUIRE(algo.kernel_chains.size() == 2);
+        }
+        else
+        {
+            // in this case, each of the two can either both be on host, one be on device, or both
+            // be on device. that makes 8 since they can go in either order.
+            REQUIRE(algo.kernel_chains.size() == 8);
+        }
 
         // then set up our optimizer verification function to test both of our outputs!
         algo.set_validation_function([&c, &f, &c_truth, &f_truth, &N]()
@@ -270,7 +279,6 @@ TEST_CASE("Optimizer: Test No Dependencies, W/ Reordering")
 
         algo.print_results();
     }
-    Kokkos::finalize();
 }
 
 
@@ -280,16 +288,13 @@ TEST_CASE("Optimizer: 3 Kernels, 1 Dependent, No Reordering")
     const size_t M        = 20;
     const bool reordering = false;
 
-    const DeviceSelector device = DeviceSelector::AUTO;
-
     // execution options
     KernelOptions options;
-    if (device != DeviceSelector::AUTO)
-        options = { { device } };
+    if (GLOBAL_DEVICE != DeviceSelector::AUTO)
+        options = { { GLOBAL_DEVICE } };
     else
         options = { { DeviceSelector::HOST, DeviceSelector::DEVICE } };
 
-    Kokkos::initialize();
     {
 
 #include "helpers/optimizer_build_views.cpp"
@@ -414,9 +419,17 @@ TEST_CASE("Optimizer: 3 Kernels, 1 Dependent, No Reordering")
         }
 
         // also check the number of chains!
-        // in this case, the output of kernel 1 must always match the input of kernel 2, so that
-        // reduces the number a bit, so we have 8 chains
-        REQUIRE(algo.kernel_chains.size() == 8);
+        if (options.devices.size() == 1)
+        {
+            // if there's only one device, there's only one chain!
+            REQUIRE(algo.kernel_chains.size() == 1);
+        }
+        else
+        {
+            // in this case, the output of kernel 1 must always match the input of kernel 2, so that
+            // reduces the number a bit, so we have 8 chains
+            REQUIRE(algo.kernel_chains.size() == 8);
+        }
 
         // then set up our optimizer verification function to test both of our outputs!
         algo.set_validation_function([&f, &h, &f_truth, &h_truth, &N]()
@@ -444,7 +457,6 @@ TEST_CASE("Optimizer: 3 Kernels, 1 Dependent, No Reordering")
 
         // DONE
     }
-    Kokkos::finalize();
 }
 
 TEST_CASE("Optimizer: 3 Kernels, 1 Dependent, Reordering")
@@ -453,16 +465,13 @@ TEST_CASE("Optimizer: 3 Kernels, 1 Dependent, Reordering")
     const size_t M        = 20;
     const bool reordering = true;
 
-    const DeviceSelector device = DeviceSelector::AUTO;
-
     // execution options
     KernelOptions options;
-    if (device != DeviceSelector::AUTO)
-        options = { { device } };
+    if (GLOBAL_DEVICE != DeviceSelector::AUTO)
+        options = { { GLOBAL_DEVICE } };
     else
         options = { { DeviceSelector::HOST, DeviceSelector::DEVICE } };
 
-    Kokkos::initialize();
     {
 
 #include "helpers/optimizer_build_views.cpp"
@@ -587,9 +596,17 @@ TEST_CASE("Optimizer: 3 Kernels, 1 Dependent, Reordering")
         }
 
         // also check the number of chains!
-        // in this case, the output of kernel 1 must always match the input of kernel 2, so that
-        // reduces the number a bit, so we have 24 chains
-        REQUIRE(algo.kernel_chains.size() == 24);
+        if (options.devices.size() == 1)
+        {
+            // because of the data dependencies, we have 3 if we only have one device
+            REQUIRE(algo.kernel_chains.size() == 3);
+        }
+        else
+        {
+            // in this case, the output of kernel 1 must always match the input of kernel 2, so that
+            // reduces the number a bit, so we have 24 chains
+            REQUIRE(algo.kernel_chains.size() == 24);
+        }
 
         // then set up our optimizer verification function to test both of our outputs!
         algo.set_validation_function([&f, &h, &f_truth, &h_truth, &N]()
@@ -617,7 +634,6 @@ TEST_CASE("Optimizer: 3 Kernels, 1 Dependent, Reordering")
 
         // DONE
     }
-    Kokkos::finalize();
 }
 
 
@@ -628,16 +644,13 @@ TEST_CASE("Optimizer: Test Multiple Algos with Same Data")
     const size_t M        = 20;
     const bool reordering = false;
 
-    const DeviceSelector device = DeviceSelector::AUTO;
-
     // execution options
     KernelOptions options;
-    if (device != DeviceSelector::AUTO)
-        options = { { device } };
+    if (GLOBAL_DEVICE != DeviceSelector::AUTO)
+        options = { { GLOBAL_DEVICE } };
     else
         options = { { DeviceSelector::HOST, DeviceSelector::DEVICE } };
 
-    Kokkos::initialize();
     {
 
 #include "helpers/optimizer_build_views.cpp"
@@ -763,9 +776,17 @@ TEST_CASE("Optimizer: Test Multiple Algos with Same Data")
         }
 
         // also check the number of chains!
-        // in this case, the output of kernel 1 must always match the input of kernel 2, so that
-        // reduces the number a bit, so we have 8 chains
-        REQUIRE(algo.kernel_chains.size() == 8);
+        if (options.devices.size() == 1)
+        {
+            // if there's only one device, there's only one chain!
+            REQUIRE(algo.kernel_chains.size() == 1);
+        }
+        else
+        {
+            // in this case, the output of kernel 1 must always match the input of kernel 2, so that
+            // reduces the number a bit, so we have 8 chains
+            REQUIRE(algo.kernel_chains.size() == 8);
+        }
 
         auto val_function = [&f, &h, &f_truth, &h_truth, &N]()
         {
@@ -801,7 +822,6 @@ TEST_CASE("Optimizer: Test Multiple Algos with Same Data")
 
         // DONE
     }
-    Kokkos::finalize();
 }
 
 
@@ -812,16 +832,13 @@ TEST_CASE("Optimizer: Test Multiple Algos (Diff Kernels) with Same Data")
     const size_t M        = 20;
     const bool reordering = false;
 
-    const DeviceSelector device = DeviceSelector::AUTO;
-
     // execution options
     KernelOptions options;
-    if (device != DeviceSelector::AUTO)
-        options = { { device } };
+    if (GLOBAL_DEVICE != DeviceSelector::AUTO)
+        options = { { GLOBAL_DEVICE } };
     else
         options = { { DeviceSelector::HOST, DeviceSelector::DEVICE } };
 
-    Kokkos::initialize();
     {
 
 #include "helpers/optimizer_build_views.cpp"
@@ -921,5 +938,4 @@ TEST_CASE("Optimizer: Test Multiple Algos (Diff Kernels) with Same Data")
 
         // DONE
     }
-    Kokkos::finalize();
 }

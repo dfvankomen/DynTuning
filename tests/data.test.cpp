@@ -24,7 +24,6 @@ TEST_CASE("Vector to View Tests", "views")
 
     // size of the input vector
     const size_t N = 100;
-    Kokkos::initialize();
     {
         std::vector<double> a(N);
         std::vector<double> b(N);
@@ -76,7 +75,6 @@ TEST_CASE("Vector to View Tests", "views")
             // TODO: tests to make sure they line up
         }
     }
-    Kokkos::finalize();
 }
 
 TEST_CASE("Eigen Matrix to View Tests", "views")
@@ -85,7 +83,6 @@ TEST_CASE("Eigen Matrix to View Tests", "views")
     // size of the input matrices
     const size_t N = 10;
     const size_t M = 5;
-    Kokkos::initialize();
     {
         // first value in gives .rows() and second gives .cols()
         // eigen stores data in **column major order**.
@@ -143,14 +140,12 @@ TEST_CASE("Eigen Matrix to View Tests", "views")
         REQUIRE_THAT(B_host(9, 3), Catch::Matchers::WithinULP(49.0, 0));
         REQUIRE_THAT(B_host(9, 4), Catch::Matchers::WithinULP(50.0, 0));
     }
-    Kokkos::finalize();
 }
 
 TEST_CASE("Rank 1 View Data Transfer Tests", "data-transfer")
 {
     // size of the input vector
     const size_t N = 100;
-    Kokkos::initialize();
     {
         std::vector<double> a(N);
         std::vector<double> b(N);
@@ -229,7 +224,6 @@ TEST_CASE("Rank 1 View Data Transfer Tests", "data-transfer")
         REQUIRE_THAT(b_host(3), Catch::Matchers::WithinULP(40.0, 0));
         REQUIRE_THAT(b_host(4), Catch::Matchers::WithinULP(50.0, 0));
     }
-    Kokkos::finalize();
 }
 
 
@@ -238,7 +232,6 @@ TEST_CASE("Rank 2 View Data Transfer Tests", "data-transfer")
     // size of the input vector
     const size_t N = 10; // num rows
     const size_t M = 5;  // num cols
-    Kokkos::initialize();
     {
         // first value in gives .rows() and second gives .cols()
         // eigen stores data in **column major order**.
@@ -351,7 +344,6 @@ TEST_CASE("Rank 2 View Data Transfer Tests", "data-transfer")
         REQUIRE_THAT(B_host(9, 3), Catch::Matchers::WithinULP(490.0, 0));
         REQUIRE_THAT(B_host(9, 4), Catch::Matchers::WithinULP(500.0, 0));
     }
-    Kokkos::finalize();
 }
 
 TEST_CASE("Test Multiple View Construction", "views")
@@ -361,7 +353,6 @@ TEST_CASE("Test Multiple View Construction", "views")
     const size_t N    = 100;
     const size_t ncol = 5;
     const size_t nrow = 10;
-    Kokkos::initialize();
     {
         std::vector<double> a(N);
         std::vector<double> b(N);
@@ -426,7 +417,6 @@ TEST_CASE("Test Multiple View Construction", "views")
         // // test the view tuple reorder
         // TODO: test this
     }
-    Kokkos::finalize();
 }
 
 // template<typename T>
@@ -441,7 +431,6 @@ TEST_CASE("Test creating views with Kokkos View datatype", "views")
     const size_t ncol = 5;
     const size_t nrow = 10;
 
-    Kokkos::initialize();
     {
         NDArrayView<double*> a("a", N);
         NDArrayView<double**> b("b", N, N);
@@ -504,5 +493,4 @@ TEST_CASE("Test creating views with Kokkos View datatype", "views")
         REQUIRE_THAT(c_host(0, 0, 2), Catch::Matchers::WithinULP(c(0, 0, 2), 0));
         REQUIRE_THAT(c_host(0, 0, 3), Catch::Matchers::WithinULP(c(0, 0, 3), 0));
     }
-    Kokkos::finalize();
 }
