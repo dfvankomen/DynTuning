@@ -58,6 +58,58 @@ template<typename T>
 concept IsKokkosView = is_specialization<std::decay_t<T>, Kokkos::View>;
 
 //=============================================================================
+// NRankViewDataType
+//=============================================================================
+
+// useful helper that allows for better template handling of the ranks
+template<typename ScalarType, size_t Rank>
+struct NRankViewType
+{
+    using type = ScalarType;
+};
+
+template<typename ScalarType>
+struct NRankViewType<ScalarType, 1>
+{
+    using type = ScalarType*;
+};
+template<typename ScalarType>
+struct NRankViewType<ScalarType, 2>
+{
+    using type = ScalarType**;
+};
+template<typename ScalarType>
+struct NRankViewType<ScalarType, 3>
+{
+    using type = ScalarType***;
+};
+template<typename ScalarType>
+struct NRankViewType<ScalarType, 4>
+{
+    using type = ScalarType****;
+};
+template<typename ScalarType>
+struct NRankViewType<ScalarType, 5>
+{
+    using type = ScalarType*****;
+};
+template<typename ScalarType>
+struct NRankViewType<ScalarType, 6>
+{
+    using type = ScalarType******;
+};
+template<typename ScalarType>
+struct NRankViewType<ScalarType, 7>
+{
+    using type = ScalarType*******;
+};
+template<typename ScalarType>
+struct NRankViewType<ScalarType, 8>
+{
+    using type = ScalarType********;
+};
+
+//=============================================================================
 // EquivalentView
 //=============================================================================
 
@@ -108,7 +160,9 @@ struct EquivalentView<ExecutionSpace, MemoryLayout, T>
     // Note: this ignores constness on purpose to allow deep-copies of "inputs" to kernels
 
     // Kokkos's `data_type` includes the *'s that are necessary to determine size
-    using value_type = typename T::data_type;
+    using value_type_scalar   = typename T::value_type;
+    static constexpr int Rank = T::rank();
+    using value_type          = typename NRankViewType<value_type_scalar, Rank>::type;
 
     // Type for the equivalent view of the data structure
     // Note that Kokkos views require the ** at the end, so we will just assume
@@ -210,6 +264,12 @@ struct Views
         requires IsKokkosView<T>
     static auto create_view(T& view)
     {
+        // grab the extents with rank for the Kokkos views
+        auto extents_tuple = [&]<std::size_t... Is>(std::index_sequence<Is...>)
+        {
+            return std::make_tuple(static_cast<size_t>(view.extent(Is))...);
+        }(std::make_index_sequence<T::rank()> {});
+
         // host layout may not be ideal for device
         if constexpr (MemoryType == ViewMemoryType::NONOWNING)
         {
@@ -221,17 +281,11 @@ struct Views
             using ViewType = typename EquivalentView<ExecutionSpace,
                                                      typename ExecutionSpace::array_layout,
                                                      T>::type;
+
             //   typename EquivalentView<ExecutionSpace, typename Kokkos::LayoutLeft, T>::type;
-            if constexpr (T::rank < 5)
-            {
                 // this should return a shallow copy, but it ensures that things line up as expected
                 // for our deep copies later
                 return ViewType(view);
-            }
-            else
-            {
-                throw std::runtime_error("Cannot create a view with rank higher than 3");
-            }
         }
         // tmp space on host with same layout as the device
         else if constexpr (MemoryType == ViewMemoryType::TMP)
@@ -243,7 +297,6 @@ struct Views
             // using ViewType = typename EquivalentView<ExecutionSpace, Kokkos::LayoutLeft,
             // T>::type;
 
-            // TODO: we should also probably consider templating this out
             if constexpr (T::rank == 1)
             {
                 using ViewType =
@@ -251,26 +304,13 @@ struct Views
                 // for scratch, if rank is 1, we don't need scratch, so it'll be 0 sized
                 return ViewType("", 0);
             }
-            else if constexpr (T::rank == 2)
-            {
-                using ViewType =
-                  typename EquivalentView<ExecutionSpace, ScratchViewLayout, T>::type;
-                return ViewType("",
-                                static_cast<size_t>(view.extent(0)),
-                                static_cast<size_t>(view.extent(1)));
-            }
-            else if constexpr (T::rank == 3)
-            {
-                using ViewType =
-                  typename EquivalentView<ExecutionSpace, ScratchViewLayout, T>::type;
-                return ViewType("",
-                                static_cast<size_t>(view.extent(0)),
-                                static_cast<size_t>(view.extent(1)),
-                                static_cast<size_t>(view.extent(2)));
-            }
             else
             {
-                throw std::runtime_error("Cannot create a view with rank higher than 3");
+                // apply through iteration of the tuple
+                using ViewType =
+                  typename EquivalentView<ExecutionSpace, ScratchViewLayout, T>::type;
+                return std::apply([&](auto... extents) { return ViewType("", extents...); },
+                                  extents_tuple);
             }
         }
         // device with ideal device layout
@@ -280,28 +320,8 @@ struct Views
             using ViewType = typename EquivalentView<ExecutionSpace,
                                                      typename ExecutionSpace::array_layout,
                                                      T>::type;
-
-            if constexpr (T::rank == 1)
-            {
-                return ViewType("", static_cast<size_t>(view.extent(0)));
-            }
-            else if constexpr (T::rank == 2)
-            {
-                return ViewType("",
-                                static_cast<size_t>(view.extent(0)),
-                                static_cast<size_t>(view.extent(1)));
-            }
-            else if constexpr (T::rank == 3)
-            {
-                return ViewType("",
-                                static_cast<size_t>(view.extent(0)),
-                                static_cast<size_t>(view.extent(1)),
-                                static_cast<size_t>(view.extent(2)));
-            }
-            else
-            {
-                throw std::runtime_error("Cannot create a view with rank higher than 3");
-            }
+            return std::apply([&](auto... extents) { return ViewType("", extents...); },
+                              extents_tuple);
         }
     }
 

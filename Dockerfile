@@ -46,16 +46,12 @@ ENV CC=gcc
 ENV CXX=g++
 ENV NVCC_WRAPPER_DEFAULT_COMPILER=g++
 
-# set up the work directory to "work"
-WORKDIR /work
-
 # then we prepare the build environment, based on install-env.sh
 # NOTE: Cuda is already installed, thanks to the NVIDIA base package!
 
 
 # install KOKKOS and Kernel, and CUDA_HOME, but that directory should exist
-COPY install-env.sh /work/install-env.sh
-
+COPY install-env.sh /tmp/install-env.sh
 RUN bash /work/install-env.sh && rm -rf /var/lib/apt/lists/*
 
 COPY . /work

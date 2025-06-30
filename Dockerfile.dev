@@ -1,0 +1,112 @@
+FROM nvidia/cuda:12.0.0-devel-ubuntu22.04 AS builder
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        gcc \
+        g++ \
+        make \
+        wget \
+        git \
+        cmake \
+        libeigen3-dev \
+        gdb \
+        cmake-curses-gui \
+        && rm -rf /var/lib/apt/lists/*
+
+
+# we know that cuda is at /usr/local/cuda
+ENV CUDA_HOME=/usr/local/cuda
+
+# we also need to set where KOKKOS will exist
+ENV KOKKOS_HOME=/usr/local/kokkos
+ENV KOKKOS_KERNELS_HOME=/usr/local/kokkos-kernels
+
+# update the paths, ensure CUDA and KOKKOS are on path
+ENV PATH=$CUDA_HOME/bin:$PATH
+ENV LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
+
+ENV PATH=$KOKKOS_HOME/bin:$PATH
+ENV PATH=$KOKKOS_KERNELS_HOME/bin:$PATH
+
+# set the Kokkos_ARCH values, 
+ENV CPU_ARCH=ZEN2
+ENV GPU_ARCH=AMPERE86
+
+# and then the openmp options
+ENV OMP_PLACES=threads
+ENV OMP_PROC_BIND=spread
+
+# number of processors for compiling
+ENV MAKE_NPROCS=8
+
+# and then set the exenames and compilers
+ENV exe_name="DynamicTuningPrototype"
+ENV CC=gcc
+ENV CXX=g++
+ENV NVCC_WRAPPER_DEFAULT_COMPILER=g++
+
+# install KOKKOS and Kernel, and CUDA, but that directory should exist
+COPY install-env.sh /tmp/install-env.sh
+RUN bash /tmp/install-env.sh && rm -rf /var/lib/apt/lists/*
+
+# now for stage 2
+FROM nvidia/cuda:12.0.0-devel-ubuntu22.04
+
+# copy the KOKKOs and kernel stuff
+COPY --from=builder /usr/local/kokkos /usr/local/kokkos
+COPY --from=builder /usr/local/kokkos-kernels /usr/local/kokkos-kernels
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        gcc \
+        g++ \
+        make \
+        wget \
+        git \
+        cmake \
+        libeigen3-dev \
+        gdb \
+        cmake-curses-gui \
+        valgrind \
+        vim \
+        curl \
+        ninja-build \
+        sudo \
+        && rm -rf /var/lib/apt/lists/*
+
+
+# RESET environment variables (removed comments to reduce space)
+ENV CUDA_HOME=/usr/local/cuda
+ENV KOKKOS_HOME=/usr/local/kokkos
+ENV KOKKOS_KERNELS_HOME=/usr/local/kokkos-kernels
+ENV PATH=$CUDA_HOME/bin:$PATH
+ENV LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
+ENV PATH=$KOKKOS_HOME/bin:$PATH
+ENV PATH=$KOKKOS_KERNELS_HOME/bin:$PATH
+ENV CPU_ARCH=ZEN2
+ENV GPU_ARCH=AMPERE86
+ENV OMP_PLACES=threads
+ENV OMP_PROC_BIND=spread
+ENV MAKE_NPROCS=8
+ENV exe_name="DynamicTuningPrototype"
+ENV CC=gcc
+ENV CXX=g++
+ENV NVCC_WRAPPER_DEFAULT_COMPILER=g++
+
+
+RUN useradd -m developer && \
+  echo "developer ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+USER developer
+WORKDIR /home/developer/dyntuning
+
+CMD ["bash", "-c", " \
+    mkdir -p /home/developer/build && \
+    cd /home/developer/build && \
+    cmake -G Ninja ../dyntuning \
+      -DKokkos_ROOT=\"${KOKKOS_HOME}/lib/cmake/Kokkos\" \
+      -DCMAKE_CXX_COMPILER=\"${KOKKOS_HOME}/bin/nvcc_wrapper\" \
+      -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+      -DKokkos_DEVICE=ON && \
+    exec bash"]
