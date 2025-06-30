@@ -9,6 +9,7 @@
 
 // #ifdef USE_EIGEN
 #include <Eigen/Eigen>
+#include <unsupported/Eigen/CXX11/Tensor>
 // #endif
 
 // ensure KOKKOS_HOST is set
@@ -45,6 +46,12 @@ const char* prettyprint_function_type()
  *
  */
 typedef Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> DynMatrix2D;
+
+/**
+ * @brief A convenience typedef for a 3D Eigen tensor with row major order
+ *
+ */
+typedef Eigen::Tensor<double, 3, Eigen::RowMajor> DynMatrix3D;
 
 /**
  * @brief Device selection enum for accessing AUTO, HOST, or DEVICE

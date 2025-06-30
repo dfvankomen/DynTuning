@@ -2,6 +2,8 @@
 #include "Kokkos_Core.hpp"
 #include "common.hpp"
 
+#include <type_traits>
+
 using HostExecutionSpace   = Kokkos::KOKKOS_HOST;
 using DeviceExecutionSpace = Kokkos::KOKKOS_DEVICE;
 
@@ -55,10 +57,27 @@ template<typename T>
 concept IsEigenMatrix = std::is_base_of_v<Eigen::MatrixBase<std::decay_t<T>>, std::decay_t<T>>;
 
 template<typename T>
+concept IsEigenTensor = requires {
+    // NOTE: requires like this checks **all** blocks here to identify if it's true, these three are
+    // a good way to check for Eigen tensors
+
+    // Eigen Tensor, vs matrix, has a NumDimensions static member, so we'll check that first
+    { std::decay_t<T>::NumDimensions } -> std::convertible_to<int>;
+
+    // then we can check if it has a data pointer
+    {
+        std::declval<std::decay_t<T>>().data()
+    } -> std::convertible_to<typename std::decay_t<T>::Scalar*>;
+
+    // then finally see if there's a method for dimensions
+    { std::declval<std::decay_t<T>>().dimensions() };
+};
+
+template<typename T>
 concept IsKokkosView = is_specialization<std::decay_t<T>, Kokkos::View>;
 
 //=============================================================================
-// NRankViewDataType
+// NRankViewType
 //=============================================================================
 
 // useful helper that allows for better template handling of the ranks
@@ -151,6 +170,19 @@ struct EquivalentView<ExecutionSpace, MemoryLayout, T>
     using type = Kokkos::View<value_type**, MemoryLayout, ExecutionSpace>;
 };
 
+template<typename ExecutionSpace, typename MemoryLayout, typename T>
+    requires IsEigenTensor<T>
+struct EquivalentView<ExecutionSpace, MemoryLayout, T>
+{
+    // Type of the scalar in the data structure
+    // Note: this ignores constness on purpose to allow deep-copies of "inputs" to kernels
+    using value_type_scalar   = typename std::remove_reference_t<T>::Scalar;
+    static constexpr int Rank = T::NumDimensions;
+    using value_type          = typename NRankViewType<value_type_scalar, Rank>::type;
+
+    // Type for the equivalent view of the data structure
+    using type = Kokkos::View<value_type, MemoryLayout, ExecutionSpace>;
+};
 
 template<typename ExecutionSpace, typename MemoryLayout, typename T>
     requires IsKokkosView<T>
@@ -259,7 +291,74 @@ struct Views
         }
     }
 
-    // Specialization for Eigen matrix
+    // Specialization for Eigen Tensor (3d matrix, for example)
+    template<typename T>
+        requires IsEigenTensor<T>
+    static auto create_view(T& tensor)
+    {
+        const auto& dimensions = tensor.dimensions();
+
+        // this extents gives us our size_t from Eigen::array of dimensions
+        auto extents_tuple = [&]<std::size_t... Is>(std::index_sequence<Is...>)
+        {
+            return std::make_tuple(static_cast<size_t>(dimensions[Is])...);
+        }(std::make_index_sequence<std::decay_t<T>::NumDimensions> {});
+
+        // host layout may not be ideal for device
+        if constexpr (MemoryType == ViewMemoryType::NONOWNING)
+        {
+            // NOTE: Eigen, by default uses "layoutleft" (meaning col-major order).
+            // this differs from the default view which is LayoutRight.
+            // originally the typename Kokkos::LayoutLeft was actually
+            // typename ExecutationSpace::array_layout
+            // TODO: a constexpr for if it's row major or not
+            using ViewType = typename EquivalentView<ExecutionSpace,
+                                                     typename ExecutionSpace::array_layout,
+                                                     T>::type;
+
+            return std::apply(
+              [&](auto... extents)
+            {
+                return ViewType(const_cast<typename ViewType::value_type*>(tensor.data()),
+                                extents...);
+            },
+              extents_tuple);
+
+            // return ViewType(const_cast<ViewType::value_type*>(tensor.data()),
+            //                 static_cast<size_t>(tensor.pages()),
+            //                 static_cast<size_t>(tensor.rows()),
+            //                 static_cast<size_t>(tensor.cols()));
+        }
+        // tmp space on host with same layout as the device
+        else if constexpr (MemoryType == ViewMemoryType::TMP)
+        {
+            // TODO: this is kind of dirty/hacky, as we should be passing the data in via
+            // ArrayLayoutType instead of ScratchViewLayout, but this gets it working properly for
+            // now
+            using ViewType = typename EquivalentView<ExecutionSpace, ScratchViewLayout, T>::type;
+
+            return std::apply([&](auto... extents) { return ViewType("", extents...); },
+                              extents_tuple);
+            // return ViewType("",
+            //                 static_cast<size_t>(tensor.pages()),
+            //                 static_cast<size_t>(tensor.rows()),
+            //                 static_cast<size_t>(tensor.cols()));
+        }
+        // device with ideal device layout
+        else if constexpr (MemoryType == ViewMemoryType::OWNING)
+        {
+            // TODO: should this be using our template type?
+            using ViewType = typename EquivalentView<ExecutionSpace,
+                                                     typename ExecutionSpace::array_layout,
+                                                     T>::type;
+
+            return std::apply([&](auto... extents) { return ViewType("", extents...); },
+                              extents_tuple);
+            // return ViewType("", tensor.pages(), tensor.rows(), tensor.cols());
+        }
+    }
+
+    // Specialization for Kokkos View
     template<typename T>
         requires IsKokkosView<T>
     static auto create_view(T& view)
@@ -283,9 +382,9 @@ struct Views
                                                      T>::type;
 
             //   typename EquivalentView<ExecutionSpace, typename Kokkos::LayoutLeft, T>::type;
-                // this should return a shallow copy, but it ensures that things line up as expected
-                // for our deep copies later
-                return ViewType(view);
+            // this should return a shallow copy, but it ensures that things line up as expected
+            // for our deep copies later
+            return ViewType(view);
         }
         // tmp space on host with same layout as the device
         else if constexpr (MemoryType == ViewMemoryType::TMP)

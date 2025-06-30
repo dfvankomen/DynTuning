@@ -112,7 +112,54 @@ void transfer_data_host_to_device(size_t tuple_idx, ViewCollection& view_collect
                                              "incorrect rank on scratch!");
                 }
             });
-        } // END SPLIT FOR RANK 1 AND 2
+        }
+        // BEGIN LOGIC FOR RANK 3
+        else if constexpr (HostViewType::rank == 3)
+        {
+#ifdef DYNTUNE_DEBUG_DATA_TRANSFER
+            std::cout << "  Host views are of rank 3" << std::endl;
+#endif
+            find_tuple(views_sc,
+                       tuple_idx,
+                       [&]<typename ScratchViewType>(ScratchViewType& view_sc)
+            {
+                // make sure the compiler only considers matches of rank 3
+                if constexpr (ScratchViewType::rank == 3)
+                {
+#ifdef DYNTUNE_DEBUG_DATA_TRANSFER
+                    std::cout << "  Rank 3 transfering to scratch!" << std::endl;
+#endif
+
+                    Kokkos::deep_copy(view_sc, view_h);
+
+                    // once it's on the scratch, we need to copy over to the device
+                    find_tuple(views_d,
+                               tuple_idx,
+                               [&]<typename DeviceViewType>(DeviceViewType& view_d)
+                    {
+                        // once again, make sure the compiler only considers matches of rank 3
+                        if constexpr (DeviceViewType::rank == 3)
+                        {
+#ifdef DYNTUNE_DEBUG_DATA_TRANSFER
+                            std::cout << "  Rank 3 transferring to device!" << std::endl;
+#endif
+
+                            Kokkos::deep_copy(view_d, view_sc);
+                        }
+                        else
+                        {
+                            throw std::runtime_error("HOST-TO-DEVICE: Rank 3 view on scratch "
+                                                     "matched with an incorrect rank on device!");
+                        }
+                    });
+                }
+                else
+                {
+                    throw std::runtime_error("HOST-TO-DEVICE: Rank 3 view on host matched with an "
+                                             "incorrect rank on scratch!");
+                }
+            });
+        } // END SPLIT FOR RANK 1, 2, and 3
     });
 }
 
@@ -244,7 +291,55 @@ void transfer_data_device_to_host(size_t tuple_idx, ViewCollection& view_collect
                                              "with an incorrect rank on scratch!");
                 }
             });
-        } // END SPLIT FOR RANK 1 AND 2
+        }
+        // BEGIN LOGIC FOR RANK 3
+        else if constexpr (DeviceViewType::rank == 3)
+        {
+#ifdef DYNTUNE_DEBUG_DATA_TRANSFER
+            std::cout << "  Device views are of rank 3" << std::endl;
+#endif
+            find_tuple(views_sc,
+                       tuple_idx,
+                       [&]<typename ScratchViewType>(ScratchViewType& view_sc)
+            {
+                // make sure the compiler only consders matches of rank 3
+                if constexpr (ScratchViewType::rank == 3)
+                {
+#ifdef DYNTUNE_DEBUG_DATA_TRANSFER
+                    std::cout << "  Rank 3 transferring to scratch!" << std::endl;
+#endif
+
+                    Kokkos::deep_copy(view_sc, view_d);
+
+                    // once it's on scratch, we need to copy over to the host
+                    find_tuple(views_h,
+                               tuple_idx,
+                               [&]<typename HostViewType>(HostViewType& view_h)
+                    {
+                        // once again, make sure the compiler only considres matches of rank 3
+                        if constexpr (HostViewType::rank == 3)
+                        {
+#ifdef DYNTUNE_DEBUG_DATA_TRANSFER
+                            std::cout << "  Rank 3 is transferring to host!" << std::endl;
+#endif
+
+                            Kokkos::deep_copy(view_h, view_sc);
+                        }
+                        else
+                        {
+                            throw std::runtime_error("DEVICE-TO-HOST - Rank 3 tensor on scratch "
+                                                     "matched with an incorrect rank on host!");
+                        }
+                    });
+                }
+                else
+                {
+
+                    throw std::runtime_error("DEVICE-TO-HOST - Rank 3 tensor on device matched "
+                                             "with an incorrect rank on scratch!");
+                }
+            });
+        } // END SPLIT FOR RANK 1, 2 and 3
     });
 }
 
