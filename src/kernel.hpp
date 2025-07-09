@@ -345,6 +345,12 @@ inline void call_kernel(const std::string& name,
             functor(views, i, j);
         });
     }
+    else if constexpr (KernelRank == 3)
+    {
+        Kokkos::parallel_for(name, range_policy, KOKKOS_LAMBDA(int i, int j, int k) {
+            functor(views, i, j, k);
+        });
+    }
 }
 
 /**
