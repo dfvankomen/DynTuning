@@ -251,20 +251,26 @@ struct Views
         requires IsEigenMatrix<T>
     static auto create_view(T& matrix)
     {
+        // check if Eigen is row major or not
+        constexpr bool is_row_major = (T::Flags & Eigen::RowMajorBit) != 0;
+
+        // default host layout
+        using HostLayout = typename HostExecutionSpace::array_layout;
+        // scratch layout
+        using ScratchLayout = ScratchViewLayout;
+        // device layout, as desired
+        using DeviceLayout = typename ExecutionSpace::array_layout;
+
         // host layout may not be ideal for device
         if constexpr (MemoryType == ViewMemoryType::NONOWNING)
         {
-            // NOTE: Eigen, by default uses "layoutleft" (meaning col-major order).
-            // this differs from the default view which is LayoutRight.
-            // originally the typename Kokkos::LayoutLeft was actually
-            // typename ExecutationSpace::array_layout
-            // TODO: a constexpr for if it's row major or not
-            using ViewType = typename EquivalentView<ExecutionSpace,
-                                                     typename ExecutionSpace::array_layout,
-                                                     T>::type;
-            //   typename EquivalentView<ExecutionSpace, typename Kokkos::LayoutLeft, T>::type;
+            // figure out what layout we need to set the data to
+            using ViewLayout =
+              std::conditional_t<is_row_major, Kokkos::LayoutRight, Kokkos::LayoutLeft>;
 
-            // using ViewType = typename EquivalentView<ExecutionSpace, T>::type;
+            // then we set the view type to equivalent view with the calculated type
+            using ViewType = typename EquivalentView<ExecutionSpace, ViewLayout, T>::type;
+
             return ViewType(const_cast<ViewType::value_type*>(matrix.data()),
                             static_cast<size_t>(matrix.rows()),
                             static_cast<size_t>(matrix.cols()));
@@ -275,7 +281,7 @@ struct Views
             // TODO: this is kind of dirty/hacky, as we should be passing the data in via
             // ArrayLayoutType instead of ScratchViewLayout, but this gets it working properly for
             // now
-            using ViewType = typename EquivalentView<ExecutionSpace, ScratchViewLayout, T>::type;
+            using ViewType = typename EquivalentView<ExecutionSpace, ScratchLayout, T>::type;
             return ViewType("",
                             static_cast<size_t>(matrix.rows()),
                             static_cast<size_t>(matrix.cols()));
@@ -284,9 +290,7 @@ struct Views
         else if constexpr (MemoryType == ViewMemoryType::OWNING)
         {
             // TODO: should this be using our template type?
-            using ViewType = typename EquivalentView<ExecutionSpace,
-                                                     typename ExecutionSpace::array_layout,
-                                                     T>::type;
+            using ViewType = typename EquivalentView<ExecutionSpace, DeviceLayout, T>::type;
             return ViewType("", matrix.rows(), matrix.cols());
         }
     }
@@ -298,6 +302,16 @@ struct Views
     {
         const auto& dimensions = tensor.dimensions();
 
+        // check if Eigen is row major or not
+        constexpr bool is_row_major = (T::Options & Eigen::RowMajor) != 0;
+
+        // default host layout
+        using HostLayout = typename HostExecutionSpace::array_layout;
+        // scratch layout
+        using ScratchLayout = ScratchViewLayout;
+        // device layout, as desired
+        using DeviceLayout = typename ExecutionSpace::array_layout;
+
         // this extents gives us our size_t from Eigen::array of dimensions
         auto extents_tuple = [&]<std::size_t... Is>(std::index_sequence<Is...>)
         {
@@ -307,14 +321,12 @@ struct Views
         // host layout may not be ideal for device
         if constexpr (MemoryType == ViewMemoryType::NONOWNING)
         {
-            // NOTE: Eigen, by default uses "layoutleft" (meaning col-major order).
-            // this differs from the default view which is LayoutRight.
-            // originally the typename Kokkos::LayoutLeft was actually
-            // typename ExecutationSpace::array_layout
-            // TODO: a constexpr for if it's row major or not
-            using ViewType = typename EquivalentView<ExecutionSpace,
-                                                     typename ExecutionSpace::array_layout,
-                                                     T>::type;
+            // figure out what layout we need to set the data to
+            using ViewLayout =
+              std::conditional_t<is_row_major, Kokkos::LayoutRight, Kokkos::LayoutLeft>;
+
+            // then we set the view type to equivalent view with the calculated type
+            using ViewType = typename EquivalentView<ExecutionSpace, ViewLayout, T>::type;
 
             return std::apply(
               [&](auto... extents)
@@ -323,11 +335,6 @@ struct Views
                                 extents...);
             },
               extents_tuple);
-
-            // return ViewType(const_cast<ViewType::value_type*>(tensor.data()),
-            //                 static_cast<size_t>(tensor.pages()),
-            //                 static_cast<size_t>(tensor.rows()),
-            //                 static_cast<size_t>(tensor.cols()));
         }
         // tmp space on host with same layout as the device
         else if constexpr (MemoryType == ViewMemoryType::TMP)
@@ -335,26 +342,19 @@ struct Views
             // TODO: this is kind of dirty/hacky, as we should be passing the data in via
             // ArrayLayoutType instead of ScratchViewLayout, but this gets it working properly for
             // now
-            using ViewType = typename EquivalentView<ExecutionSpace, ScratchViewLayout, T>::type;
+            using ViewType = typename EquivalentView<ExecutionSpace, ScratchLayout, T>::type;
 
             return std::apply([&](auto... extents) { return ViewType("", extents...); },
                               extents_tuple);
-            // return ViewType("",
-            //                 static_cast<size_t>(tensor.pages()),
-            //                 static_cast<size_t>(tensor.rows()),
-            //                 static_cast<size_t>(tensor.cols()));
         }
         // device with ideal device layout
         else if constexpr (MemoryType == ViewMemoryType::OWNING)
         {
             // TODO: should this be using our template type?
-            using ViewType = typename EquivalentView<ExecutionSpace,
-                                                     typename ExecutionSpace::array_layout,
-                                                     T>::type;
+            using ViewType = typename EquivalentView<ExecutionSpace, DeviceLayout, T>::type;
 
             return std::apply([&](auto... extents) { return ViewType("", extents...); },
                               extents_tuple);
-            // return ViewType("", tensor.pages(), tensor.rows(), tensor.cols());
         }
     }
 
