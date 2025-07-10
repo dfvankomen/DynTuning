@@ -92,6 +92,28 @@ target_compile_definitions(exe PUBLIC
 set_target_properties(exe PROPERTIES OUTPUT_NAME ${PROJECT_NAME})
 
 
+# nlsm example
+add_executable(nlsm examples/nlsm.cpp)
+target_link_libraries(nlsm PRIVATE Kokkos::kokkos)
+target_link_libraries(nlsm PRIVATE Eigen3::Eigen)
+target_include_directories(nlsm PRIVATE
+ "${CUDA_HOME}/include"
+  "${PROJECT_SOURCE_DIR}/src"
+  "${PROJECT_SOURCE_DIR}/src/kernels"
+  "${PROJECT_SOURCE_DIR}/examples/kernels"
+)
+add_definitions(-w)
+target_compile_options(nlsm PRIVATE
+  $<$<COMPILE_LANGUAGE:CUDA>:
+    --extended-lambdas
+  >
+)
+target_compile_features(nlsm PRIVATE cxx_std_20)
+target_compile_definitions(nlsm PUBLIC
+  KOKKOS_HOST=${Kokkos_HOST}
+  KOKKOS_DEVICE=${Kokkos_DEVICE}
+)
+
 
 
 # test build
